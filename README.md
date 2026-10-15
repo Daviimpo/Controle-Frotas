@@ -55,7 +55,19 @@ lib/
   server/                storage (JSON em disco), sessão, extração de PDF
 ```
 
-**Persistência:** `data/state.json` (criado automaticamente com os dados de exemplo; apague o arquivo para reiniciar). Funciona em servidor próprio/VPS/Docker. Para Vercel ou múltiplas instâncias, troque `readState`/`writeState` em `lib/server/storage.ts` por Postgres/Supabase/Redis — o restante do app não muda.
+**Persistência (Supabase):**
+
+1. No SQL Editor do Supabase, rode `supabase/migrations/0001_controle_frotas.sql`. Ele cria `frotas`, `quadro_frotas` (blocos Programação/CRT com `frota_ids`), `quadro_colunas`, `quadro_meta` e um trigger que tira a frota excluída dos blocos. O script pode ser rodado mais de uma vez.
+2. Em `.env.local` (e nas variáveis do Vercel) defina `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. A chave é usada só no servidor, nunca com `NEXT_PUBLIC_`.
+3. Opcional: `SEED_MOCK_DATA=true` cria as 64 frotas de exemplo **uma única vez**, só se a tabela `frotas` estiver vazia na primeira execução.
+
+Fluxo de gravação:
+- **Importar planilha** → `POST /api/frotas/import` → upsert/delete direto em `frotas`.
+- **Excluir em massa** → `DELETE /api/frotas` → delete em `frotas` (o trigger limpa `quadro_frotas`).
+- **Quadro** (mover frota, blocos, colunas, macro) → `PUT /api/state` → `quadro_frotas`, `quadro_colunas` e macro em `frotas`. Se outra aba salvou antes, a resposta é 409 e a tela recarrega a versão do banco em vez de sobrescrevê-la.
+- Qualquer falha do banco aparece como erro na tela; nada fica salvo só em memória.
+
+Sem as variáveis do Supabase, o app usa `data/state.json` (apenas para desenvolvimento local).
 
 **Tempo real:** quem visualiza recebe atualizações por *polling* (15s e ao voltar para a aba). Para atualização instantânea, substitua por Supabase Realtime, Pusher ou SSE dentro do `BoardProvider`. Conflitos de edição simultânea seguem a regra “última gravação vence”.
 

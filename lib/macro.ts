@@ -34,9 +34,9 @@ export const MACROS: Record<Macro, { label: string; chip: string; badge: string;
   },
   viagem: {
     label: 'Viagem',
-    chip: 'bg-[#D9D2E9] text-[#3D1E6D] border-[#B4A7D6]',
-    badge: 'bg-[#D9D2E9] text-[#3D1E6D] ring-[#B4A7D6]',
-    dot: 'bg-[#3D1E6D]',
+    chip: 'bg-[#CFE2F3] text-[#0B5394] border-[#9FC5E8]',
+    badge: 'bg-[#CFE2F3] text-[#0B5394] ring-[#9FC5E8]',
+    dot: 'bg-[#0B5394]',
   },
   descarga: {
     label: 'Descarga',

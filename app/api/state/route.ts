@@ -1,32 +1,40 @@
-import { NextResponse } from 'next/server';
-import { isBoardState, readState, writeState } from '@/lib/server/storage';
+import { getStore, isBoardState } from '@/lib/server/storage';
 import { getSession } from '@/lib/server/session';
-import { migrateMacros } from '@/lib/macro';
+import { errorResponse, json } from '@/lib/server/http';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-/** Leitura pública: qualquer pessoa com o link vê o quadro */
+/** Leitura pública: qualquer pessoa com o link vê o quadro (sempre direto do banco) */
 export async function GET() {
-  const state = await readState();
-  return NextResponse.json(state, { headers: { 'cache-control': 'no-store' } });
+  try {
+    return json(await getStore().read());
+  } catch (err) {
+    return errorResponse(err);
+  }
 }
 
-/** Escrita restrita: exige sessão de admin/operador */
+/**
+ * Salva o quadro (colunas, blocos de quadro_frotas e macros). Exige login.
+ * Inserir/excluir frotas do cadastro é feito em /api/frotas e /api/frotas/import.
+ */
 export async function PUT(req: Request) {
   const session = getSession();
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  if (!session) return json({ error: 'Não autorizado' }, 401);
 
   const body = await req.json().catch(() => null);
-  if (!isBoardState(body)) return NextResponse.json({ error: 'Estado inválido' }, { status: 400 });
+  if (!isBoardState(body)) return json({ error: 'Estado inválido' }, 400);
 
-  const current = await readState();
-  const next = {
-    ...migrateMacros(body),
-    version: (current.version ?? 0) + 1,
-    updatedAt: new Date().toISOString(),
-    updatedBy: session.user,
-  };
-  await writeState(next);
-  return NextResponse.json(next);
+  try {
+    const store = getStore();
+    const current = await store.read();
+    // Aba desatualizada (outro usuário salvou depois que ela carregou): não sobrescreve
+    if (typeof body.version === 'number' && body.version < current.version) {
+      return json({ error: 'O quadro foi alterado por outro usuário. Recarregamos a versão mais recente.', state: current }, 409);
+    }
+    return json(await store.saveBoard(body, session.user));
+  } catch (err) {
+    return errorResponse(err);
+  }
 }

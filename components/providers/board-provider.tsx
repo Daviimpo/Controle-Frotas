@@ -14,6 +14,7 @@ interface BoardCtx {
   lastSync: Date | null;
   mutate: (fn: (s: BoardState) => BoardState) => void;
   refresh: () => Promise<void>;
+  serverAction: <T extends { state: BoardState }>(url: string, init: { method: string; body?: unknown }) => Promise<T>;
 }
 
 const Ctx = createContext<BoardCtx | null>(null);
@@ -54,6 +55,13 @@ export function BoardProvider({ children }: { children: ReactNode }) {
     };
   }, [refresh]);
 
+  const adopt = useCallback((s: BoardState) => {
+    stateRef.current = s;
+    setState(s);
+    setLastSync(new Date());
+    setError(null);
+  }, []);
+
   const persist = useCallback(async () => {
     const sent = stateRef.current;
     if (!sent) return;
@@ -64,27 +72,67 @@ export function BoardProvider({ children }: { children: ReactNode }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(sent),
       });
+      const data = (await r.json().catch(() => ({}))) as BoardState & { error?: string; state?: BoardState };
       if (r.status === 401) {
         toast.error('Sessão expirada. Faça login novamente para salvar alterações.');
         dirty.current = false;
         await refresh();
         return;
       }
-      if (!r.ok) throw new Error(String(r.status));
-      const saved = (await r.json()) as BoardState;
+      if (r.status === 409 && data.state) {
+        toast.warning(data.error ?? 'O quadro foi alterado por outro usuário.', { description: 'Refaça sua última alteração, se necessário.' });
+        dirty.current = false;
+        adopt(data.state);
+        return;
+      }
+      if (!r.ok) throw new Error(data.error || `Erro ${r.status}`);
       if (stateRef.current === sent) {
         dirty.current = false;
-        stateRef.current = saved;
-        setState(saved);
+        adopt(data);
+      } else if (stateRef.current) {
+        // houve nova alteração durante o envio: mantém o local, mas na versão já salva
+        stateRef.current = { ...stateRef.current, version: data.version };
       }
       setLastSync(new Date());
-    } catch {
-      toast.error('Não foi possível salvar as alterações. Tentaremos novamente.');
+    } catch (err) {
+      toast.error('Não foi possível salvar no banco de dados. Tentaremos novamente.', {
+        id: 'save-error',
+        description: err instanceof Error ? err.message : undefined,
+      });
       saveTimer.current = setTimeout(persist, 5000);
     } finally {
       setSaving(false);
     }
-  }, [refresh]);
+  }, [refresh, adopt]);
+
+  /**
+   * Ações que gravam direto nas tabelas (importar planilha, excluir frotas):
+   * salva antes o que estiver pendente no quadro e depois adota o estado que o servidor devolveu.
+   */
+  const serverAction = useCallback(
+    async <T extends { state: BoardState }>(url: string, init: { method: string; body?: unknown }): Promise<T> => {
+      if (dirty.current) {
+        clearTimeout(saveTimer.current);
+        await persist();
+      }
+      setSaving(true);
+      try {
+        const r = await fetch(url, {
+          method: init.method,
+          headers: { 'content-type': 'application/json' },
+          body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        });
+        const data = (await r.json().catch(() => ({}))) as T & { error?: string };
+        if (!r.ok) throw new Error(data.error || `Erro ${r.status}`);
+        dirty.current = false;
+        adopt(data.state);
+        return data;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [persist, adopt],
+  );
 
   // Garante o envio de alterações pendentes ao fechar/recarregar a aba
   useEffect(() => {
@@ -122,7 +170,7 @@ export function BoardProvider({ children }: { children: ReactNode }) {
     [persist],
   );
 
-  return <Ctx.Provider value={{ state, error, saving, lastSync, mutate, refresh }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ state, error, saving, lastSync, mutate, refresh, serverAction }}>{children}</Ctx.Provider>;
 }
 
 export function useBoard() {

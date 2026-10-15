@@ -8,8 +8,8 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { useBoard } from '@/components/providers/board-provider';
 import { Badge, Button, Card, Dialog, Input, PageHeader, Skeleton } from '@/components/ui';
 import { FrotaBadge, MacroLabel } from '@/components/board/frota-badge';
-import { deleteVehicles, locationLabel, upsertVehicles } from '@/lib/board-ops';
-import type { Vehicle, VehicleInput } from '@/lib/types';
+import { locationLabel } from '@/lib/board-ops';
+import type { BoardState, Vehicle, VehicleInput } from '@/lib/types';
 import { cn, formatPlate, normalizePlate, normalizeText } from '@/lib/utils';
 
 // ---------- Leitura da planilha (CSV / XLSX) ----------
@@ -70,7 +70,7 @@ function exportXlsx(vehicles: Vehicle[]) {
 
 // ---------- Página ----------
 export default function CadastroPage() {
-  const { state, mutate } = useBoard();
+  const { state, serverAction } = useBoard();
   const { isEditor, openLogin } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState('');
@@ -78,6 +78,7 @@ export default function CadastroPage() {
   const [mode, setMode] = useState<'merge' | 'replace'>('merge');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   if (!state) return <Skeleton className="h-96" />;
 
@@ -94,13 +95,22 @@ export default function CadastroPage() {
     }
   }
 
-  function confirmImport() {
-    if (!preview || !state) return;
-    const r = upsertVehicles(state, preview.rows, mode);
-    mutate(() => r.state);
-    setSelectedIds([]);
-    toast.success(`Cadastro atualizado: ${r.added} nova(s), ${r.updated} atualizada(s)${r.removed ? `, ${r.removed} removida(s)` : ''}.`);
-    setPreview(null);
+  async function confirmImport() {
+    if (!preview) return;
+    setBusy(true);
+    try {
+      const r = await serverAction<{ state: BoardState; added: number; updated: number; removed: number }>('/api/frotas/import', {
+        method: 'POST',
+        body: { rows: preview.rows, mode },
+      });
+      setSelectedIds([]);
+      setPreview(null);
+      toast.success(`Cadastro salvo: ${r.added} nova(s), ${r.updated} atualizada(s)${r.removed ? `, ${r.removed} removida(s)` : ''}.`);
+    } catch (err) {
+      toast.error('A importação não foi salva.', { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setBusy(false);
+    }
   }
 
   const nq = normalizeText(q);
@@ -128,12 +138,18 @@ export default function CadastroPage() {
   const handleSelectOne = (id: string, checked: boolean) =>
     setSelectedIds((prev) => (checked ? [...prev, id] : prev.filter((item) => item !== id)));
 
-  function handleDeleteSelected() {
-    const n = selected.length;
-    mutate((s) => deleteVehicles(s, selected));
-    setSelectedIds([]);
-    setConfirmDelete(false);
-    toast.success(`${n} frota(s) excluída(s) do cadastro e do quadro.`);
+  async function handleDeleteSelected() {
+    setBusy(true);
+    try {
+      const r = await serverAction<{ state: BoardState; removed: number }>('/api/frotas', { method: 'DELETE', body: { ids: selected } });
+      setSelectedIds([]);
+      setConfirmDelete(false);
+      toast.success(`${r.removed} frota(s) excluída(s) do cadastro e do quadro.`);
+    } catch (err) {
+      toast.error('A exclusão não foi salva.', { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setBusy(false);
+    }
   }
 
   const selectedVehicles = state.vehicles.filter((v) => selected.includes(v.id));
@@ -268,8 +284,8 @@ export default function CadastroPage() {
             <Button variant="secondary" onClick={() => setConfirmDelete(false)}>
               Cancelar
             </Button>
-            <Button variant="danger" onClick={handleDeleteSelected}>
-              <Trash2 className="h-4 w-4" /> Excluir
+            <Button variant="danger" onClick={handleDeleteSelected} disabled={busy}>
+              <Trash2 className="h-4 w-4" /> {busy ? 'Excluindo…' : 'Excluir'}
             </Button>
           </>
         }
@@ -293,7 +309,9 @@ export default function CadastroPage() {
             <Button variant="secondary" onClick={() => setPreview(null)}>
               Cancelar
             </Button>
-            <Button onClick={confirmImport}>Confirmar importação</Button>
+            <Button onClick={confirmImport} disabled={busy}>
+              {busy ? 'Salvando…' : 'Confirmar importação'}
+            </Button>
           </>
         }
       >
