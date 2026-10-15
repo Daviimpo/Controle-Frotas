@@ -34,9 +34,9 @@ export const MACROS: Record<Macro, { label: string; chip: string; badge: string;
   },
   viagem: {
     label: 'Viagem',
-    chip: 'bg-[#CFE2F3] text-[#0B5394] border-[#9FC5E8]',
-    badge: 'bg-[#CFE2F3] text-[#0B5394] ring-[#9FC5E8]',
-    dot: 'bg-[#0B5394]',
+    chip: 'bg-[#D9D2E9] text-[#3D1E6D] border-[#B4A7D6]',
+    badge: 'bg-[#D9D2E9] text-[#3D1E6D] ring-[#B4A7D6]',
+    dot: 'bg-[#3D1E6D]',
   },
   descarga: {
     label: 'Descarga',
@@ -76,32 +76,4 @@ export function migrateMacros(state: BoardState): BoardState {
   return {
     ...state,
     vehicles: state.vehicles.map((v) => ({ ...v, macro: normalizeMacro(v.macro) })),
-    columns: state.columns.map((c) => ({ ...c, expectedMacros: fix(c.expectedMacros) })),
-    groups: state.groups.map((g) => ({ ...g, expectedMacros: fix(g.expectedMacros) })),
-  };
-}
-
-export function expectedMacros(column?: Column, group?: Group): Macro[] | undefined {
-  return group?.expectedMacros ?? column?.expectedMacros;
-}
-
-export interface MacroAlert {
-  type: 'stale' | 'mismatch';
-  message: string;
-}
-
-export function macroAlert(v: Vehicle, expected?: Macro[], now = Date.now()): MacroAlert | null {
-  if (expected && expected.length && !expected.includes(v.macro)) {
-    return {
-      type: 'mismatch',
-      message: `Macro "${MACROS[v.macro].label}" não confere com a posição no quadro (esperado: ${expected
-        .map((m) => MACROS[m].label)
-        .join(' / ')})`,
-    };
-  }
-  const h = hoursSince(v.macroUpdatedAt, now);
-  if (h > STALE_HOURS) {
-    return { type: 'stale', message: `Macro sem atualização no rastreador há ${Math.floor(h)}h` };
-  }
-  return null;
-}
+    columns: state
