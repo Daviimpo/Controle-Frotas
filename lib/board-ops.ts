@@ -82,9 +82,9 @@ export function addColumn(state: BoardState, data: Omit<Column, 'id'>): BoardSta
   while (state.columns.some((c) => c.id === id)) id = `${id}-${Math.random().toString(36).slice(2, 5)}`;
   const defaults =
     data.section === 'exportacao'
-      ? (['viagem', 'descarregando'] as const)
+      ? (['viagem', 'descarga'] as const)
       : data.section === 'importacao'
-        ? (['carregamento', 'viagem', 'descarregando'] as const)
+        ? (['carga', 'viagem', 'descarga'] as const)
         : undefined;
   const column: Column = { expectedMacros: defaults ? [...defaults] : undefined, ...data, id };
   // insere após a última coluna da mesma seção
@@ -221,4 +221,14 @@ export function applyAllocations(state: BoardState, allocs: Allocation[]): Board
     st = moveFrota(st, a.vehicleId, gid);
   }
   return st;
+}
+
+/** Exclusão em massa: remove as frotas do cadastro e de todos os blocos do quadro */
+export function deleteVehicles(state: BoardState, ids: string[]): BoardState {
+  const drop = new Set(ids);
+  return {
+    ...state,
+    vehicles: state.vehicles.filter((v) => !drop.has(v.id)),
+    groups: state.groups.map((g) => ({ ...g, frotaIds: g.frotaIds.filter((x) => !drop.has(x)) })),
+  };
 }

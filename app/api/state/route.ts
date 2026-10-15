@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isBoardState, readState, writeState } from '@/lib/server/storage';
 import { getSession } from '@/lib/server/session';
+import { migrateMacros } from '@/lib/macro';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,7 +22,7 @@ export async function PUT(req: Request) {
 
   const current = await readState();
   const next = {
-    ...body,
+    ...migrateMacros(body),
     version: (current.version ?? 0) + 1,
     updatedAt: new Date().toISOString(),
     updatedBy: session.user,

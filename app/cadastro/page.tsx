@@ -2,13 +2,13 @@
 
 import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Download, FileSpreadsheet, Lock, Plus, Search, Trash2, Truck, Upload } from 'lucide-react';
+import { Download, FileSpreadsheet, Lock, Search, Trash2, Truck, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useBoard } from '@/components/providers/board-provider';
-import { Badge, Button, Card, Dialog, Input, Label, PageHeader, Skeleton } from '@/components/ui';
-import { addVehicle, deleteVehicle, locationLabel, updateVehicle, upsertVehicles } from '@/lib/board-ops';
-import { MACROS } from '@/lib/macro';
+import { Badge, Button, Card, Dialog, Input, PageHeader, Skeleton } from '@/components/ui';
+import { FrotaBadge, MacroLabel } from '@/components/board/frota-badge';
+import { deleteVehicles, locationLabel, upsertVehicles } from '@/lib/board-ops';
 import type { Vehicle, VehicleInput } from '@/lib/types';
 import { cn, formatPlate, normalizePlate, normalizeText } from '@/lib/utils';
 
@@ -76,8 +76,8 @@ export default function CadastroPage() {
   const [q, setQ] = useState('');
   const [preview, setPreview] = useState<{ name: string; rows: VehicleInput[] } | null>(null);
   const [mode, setMode] = useState<'merge' | 'replace'>('merge');
-  const [newOpen, setNewOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (!state) return <Skeleton className="h-96" />;
 
@@ -98,6 +98,7 @@ export default function CadastroPage() {
     if (!preview || !state) return;
     const r = upsertVehicles(state, preview.rows, mode);
     mutate(() => r.state);
+    setSelectedIds([]);
     toast.success(`Cadastro atualizado: ${r.added} nova(s), ${r.updated} atualizada(s)${r.removed ? `, ${r.removed} removida(s)` : ''}.`);
     setPreview(null);
   }
@@ -114,24 +115,42 @@ export default function CadastroPage() {
     )
     .sort((a, b) => a.frota.localeCompare(b.frota, 'pt-BR', { numeric: true }));
 
-  const commit = (v: Vehicle, field: keyof VehicleInput, value: string) => {
-    const val = field.startsWith('placa') ? formatPlate(value) : value.trim();
-    if (val === v[field]) return;
-    if (field === 'frota' && state.vehicles.some((x) => x.id !== v.id && x.frota === val)) {
-      toast.error(`Já existe a frota ${val}.`);
-      return;
-    }
-    mutate((s) => updateVehicle(s, v.id, { [field]: val }));
-  };
+  // Seleção considera apenas frotas que ainda existem (o cadastro pode mudar por outro operador)
+  const existing = new Set(state.vehicles.map((v) => v.id));
+  const selected = selectedIds.filter((id) => existing.has(id));
+  const visibleIds = list.map((v) => v.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
+  const someVisibleSelected = visibleIds.some((id) => selected.includes(id));
+
+  const handleSelectAll = (checked: boolean) =>
+    setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, ...visibleIds])) : prev.filter((id) => !visibleIds.includes(id))));
+
+  const handleSelectOne = (id: string, checked: boolean) =>
+    setSelectedIds((prev) => (checked ? [...prev, id] : prev.filter((item) => item !== id)));
+
+  function handleDeleteSelected() {
+    const n = selected.length;
+    mutate((s) => deleteVehicles(s, selected));
+    setSelectedIds([]);
+    setConfirmDelete(false);
+    toast.success(`${n} frota(s) excluída(s) do cadastro e do quadro.`);
+  }
+
+  const selectedVehicles = state.vehicles.filter((v) => selected.includes(v.id));
 
   return (
     <div className="space-y-5">
       <PageHeader
         icon={<Truck className="h-5 w-5" />}
         title="Cadastro de Frotas"
-        description={`${state.vehicles.length} veículos cadastrados · base para o cruzamento de placas na importação de PDFs`}
+        description={`${state.vehicles.length} veículos · atualização via importação de planilha`}
         actions={
           <>
+            {isEditor && selected.length > 0 && (
+              <Button variant="danger" onClick={() => setConfirmDelete(true)}>
+                <Trash2 className="h-4 w-4" /> Excluir ({selected.length})
+              </Button>
+            )}
             <Button variant="secondary" onClick={downloadTemplate}>
               <Download className="h-4 w-4" /> Modelo CSV
             </Button>
@@ -140,9 +159,6 @@ export default function CadastroPage() {
             </Button>
             {isEditor ? (
               <>
-                <Button variant="outline" onClick={() => setNewOpen(true)}>
-                  <Plus className="h-4 w-4" /> Nova frota
-                </Button>
                 <Button onClick={() => fileRef.current?.click()}>
                   <Upload className="h-4 w-4" /> Importar planilha
                 </Button>
@@ -150,7 +166,7 @@ export default function CadastroPage() {
               </>
             ) : (
               <Button onClick={openLogin}>
-                <Lock className="h-4 w-4" /> Entrar para editar
+                <Lock className="h-4 w-4" /> Entrar para importar
               </Button>
             )}
           </>
@@ -164,75 +180,70 @@ export default function CadastroPage() {
             <Input className="pl-8" placeholder="Filtrar por frota, placa ou motorista" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <p className="text-xs text-slate-500">
-            {isEditor ? 'Clique em uma célula para editar — a alteração é salva ao sair do campo.' : 'Modo leitura — entre para editar o cadastro.'}
+            {isEditor
+              ? selected.length
+                ? `${selected.length} selecionada(s). Os dados das frotas são alterados somente pela importação de planilha.`
+                : 'Os dados das frotas são alterados somente pela importação de planilha. Marque as caixas para excluir em massa.'
+              : 'Modo leitura — entre para importar planilhas ou excluir frotas.'}
           </p>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-sm">
-            <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <table className="w-full min-w-[860px] text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-100 text-xs font-semibold uppercase text-slate-700">
               <tr>
-                <th className="w-24 px-5 py-2.5">Frota</th>
-                <th className="w-36 px-3 py-2.5">Placa cavalo</th>
-                <th className="w-36 px-3 py-2.5">Placa carreta</th>
-                <th className="px-3 py-2.5">Motorista</th>
-                <th className="w-32 px-3 py-2.5">Macro</th>
-                <th className="px-3 py-2.5">Posição atual</th>
-                {isEditor && <th className="w-14 px-3 py-2.5" />}
+                {isEditor && (
+                  <th className="w-10 p-3 text-center">
+                    <input
+                      type="checkbox"
+                      aria-label="Selecionar todas"
+                      className="h-4 w-4 cursor-pointer accent-[#0B2545]"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected;
+                      }}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                    />
+                  </th>
+                )}
+                <th className="p-3">Frota</th>
+                <th className="p-3">Placa Cavalo</th>
+                <th className="p-3">Placa Carreta</th>
+                <th className="p-3">Motorista</th>
+                <th className="p-3">Macro do Rastreador</th>
+                <th className="p-3">Posição atual</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {list.map((v) => (
-                <tr key={v.id} className="hover:bg-slate-50/60">
-                  {(['frota', 'placaCavalo', 'placaCarreta', 'motorista'] as const).map((field, i) => (
-                    <td key={field} className={cn(i === 0 ? 'px-5' : 'px-3', 'py-1.5')}>
-                      {isEditor ? (
+              {list.map((v) => {
+                const isSel = selected.includes(v.id);
+                return (
+                  <tr
+                    key={v.id}
+                    className={cn('transition', isSel ? 'bg-brand-50/70' : 'hover:bg-slate-50', isEditor && 'cursor-pointer')}
+                    onClick={() => isEditor && handleSelectOne(v.id, !isSel)}
+                  >
+                    {isEditor && (
+                      <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                         <input
-                          key={`${v.id}-${v[field]}`}
-                          defaultValue={v[field]}
-                          onBlur={(e) => commit(v, field, e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                          className={cn(
-                            'h-8 w-full rounded-md border border-transparent bg-transparent px-2 hover:border-slate-200 focus:border-brand focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/20',
-                            field === 'frota' && 'font-bold text-navy',
-                            field.startsWith('placa') && 'font-mono text-[13px]',
-                          )}
+                          type="checkbox"
+                          aria-label={`Selecionar frota ${v.frota}`}
+                          className="h-4 w-4 cursor-pointer accent-[#0B2545]"
+                          checked={isSel}
+                          onChange={(e) => handleSelectOne(v.id, e.target.checked)}
                         />
-                      ) : (
-                        <span className={cn('block px-2 py-1.5', field === 'frota' && 'font-bold text-navy', field.startsWith('placa') && 'font-mono text-[13px]')}>
-                          {v[field] || '—'}
-                        </span>
-                      )}
+                      </td>
+                    )}
+                    <td className="p-3 font-bold text-slate-900">{v.frota}</td>
+                    <td className="p-3 font-mono text-[13px] text-slate-700">{v.placaCavalo || '—'}</td>
+                    <td className="p-3 font-mono text-[13px] text-slate-700">{v.placaCarreta || '—'}</td>
+                    <td className="p-3 text-slate-700">{v.motorista || '—'}</td>
+                    <td className="p-3">
+                      <MacroLabel macro={v.macro} />
                     </td>
-                  ))}
-                  <td className="px-3 py-1.5">
-                    <span className={cn('inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset', MACROS[v.macro].badge)}>
-                      <span className={cn('h-1.5 w-1.5 rounded-full', MACROS[v.macro].dot)} />
-                      {MACROS[v.macro].label}
-                    </span>
-                  </td>
-                  <td className="max-w-[260px] truncate px-3 py-1.5 text-xs text-slate-600">{locationLabel(state, v.id)}</td>
-                  {isEditor && (
-                    <td className="px-3 py-1.5">
-                      {pendingDelete === v.id ? (
-                        <button
-                          className="rounded bg-red-600 px-2 py-1 text-[11px] font-semibold text-white"
-                          onClick={() => {
-                            mutate((s) => deleteVehicle(s, v.id));
-                            setPendingDelete(null);
-                          }}
-                          onMouseLeave={() => setPendingDelete(null)}
-                        >
-                          Excluir
-                        </button>
-                      ) : (
-                        <button className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" title="Excluir frota" onClick={() => setPendingDelete(v.id)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="max-w-[260px] truncate p-3 text-xs text-slate-600">{locationLabel(state, v.id)}</td>
+                  </tr>
+                );
+              })}
               {list.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-5 py-8 text-center text-sm text-slate-500">
@@ -244,6 +255,31 @@ export default function CadastroPage() {
           </table>
         </div>
       </Card>
+
+      {/* Confirmação da exclusão em massa */}
+      <Dialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        size="sm"
+        title={`Excluir ${selected.length} frota(s)?`}
+        description="Elas saem do cadastro e de todos os blocos do quadro. Para trazê-las de volta, importe a planilha novamente."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmDelete(false)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={handleDeleteSelected}>
+              <Trash2 className="h-4 w-4" /> Excluir
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {selectedVehicles.map((v) => (
+            <FrotaBadge key={v.id} numero={v.frota} macro={v.macro} />
+          ))}
+        </div>
+      </Dialog>
 
       {/* Pré-visualização da planilha */}
       <Dialog
@@ -318,66 +354,6 @@ export default function CadastroPage() {
         )}
       </Dialog>
 
-      <NewVehicleDialog open={newOpen} onClose={() => setNewOpen(false)} existing={state.vehicles} onSave={(input) => mutate((s) => addVehicle(s, input))} />
     </div>
-  );
-}
-
-function NewVehicleDialog({
-  open,
-  onClose,
-  existing,
-  onSave,
-}: {
-  open: boolean;
-  onClose: () => void;
-  existing: Vehicle[];
-  onSave: (v: VehicleInput) => void;
-}) {
-  const empty = { frota: '', placaCavalo: '', placaCarreta: '', motorista: '' };
-  const [form, setForm] = useState<VehicleInput>(empty);
-  const duplicate = existing.some((v) => v.frota === form.frota.trim());
-
-  function save() {
-    onSave({ frota: form.frota.trim(), placaCavalo: formatPlate(form.placaCavalo), placaCarreta: formatPlate(form.placaCarreta), motorista: form.motorista.trim() });
-    toast.success(`Frota ${form.frota} cadastrada.`);
-    setForm(empty);
-    onClose();
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      size="sm"
-      title="Nova frota"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={save} disabled={!form.frota.trim() || duplicate}>
-            Cadastrar
-          </Button>
-        </>
-      }
-    >
-      <div className="grid grid-cols-2 gap-3">
-        {(
-          [
-            ['frota', 'Nº da frota', '161'],
-            ['placaCavalo', 'Placa cavalo', 'OAD-5041'],
-            ['placaCarreta', 'Placa carreta', 'IWK-2768'],
-            ['motorista', 'Motorista', 'Nome completo'],
-          ] as const
-        ).map(([k, label, ph]) => (
-          <div key={k}>
-            <Label>{label}</Label>
-            <Input placeholder={ph} value={form[k]} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
-          </div>
-        ))}
-      </div>
-      {duplicate && <p className="mt-2 text-xs text-red-600">Já existe uma frota com esse número.</p>}
-    </Dialog>
   );
 }

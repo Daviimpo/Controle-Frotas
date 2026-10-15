@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { BoardState } from '@/lib/types';
 import { createMockState } from '@/lib/mock-data';
+import { migrateMacros } from '@/lib/macro';
 
 /**
  * Persistência simples em arquivo JSON (ideal para servidor próprio / VPS).
@@ -16,7 +17,7 @@ const g = globalThis as unknown as { __poliviasState?: BoardState };
 export async function readState(): Promise<BoardState> {
   try {
     const raw = await fs.readFile(FILE, 'utf8');
-    const parsed = JSON.parse(raw) as BoardState;
+    const parsed = migrateMacros(JSON.parse(raw) as BoardState);
     g.__poliviasState = parsed;
     return parsed;
   } catch {

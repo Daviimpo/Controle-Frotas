@@ -8,6 +8,7 @@ import { cn, formatPlate } from '@/lib/utils';
 import { useAuth } from '@/components/providers/auth-provider';
 import { DRAG_MIME, useBoardUi } from './board-ui';
 
+/** Frota no quadro: cor = macro do rastreador · contorno vermelho/âmbar = alerta */
 export function FrotaChip({ vehicle, alert }: { vehicle: Vehicle; alert: MacroAlert | null }) {
   const { isEditor } = useAuth();
   const ui = useBoardUi();
@@ -27,15 +28,15 @@ export function FrotaChip({ vehicle, alert }: { vehicle: Vehicle; alert: MacroAl
       onClick={() => ui.openFrota(vehicle.id)}
       title={`Frota ${vehicle.frota} · ${formatPlate(vehicle.placaCavalo)} / ${formatPlate(vehicle.placaCarreta)}\n${vehicle.motorista}\nMacro: ${MACROS[vehicle.macro].label}${alert ? `\n⚠ ${alert.message}` : ''}`}
       className={cn(
-        'group inline-flex items-center gap-1.5 rounded-md border bg-white px-2 py-1 text-xs font-bold shadow-sm transition-all hover:-translate-y-px hover:border-brand hover:shadow',
-        alert ? (alert.type === 'mismatch' ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50') : 'border-slate-200',
-        highlighted && 'ring-2 ring-brand ring-offset-1',
+        'inline-flex items-center gap-1 rounded border px-2.5 py-1 text-xs font-bold tabular-nums shadow-sm transition-all hover:-translate-y-px hover:shadow',
+        MACROS[vehicle.macro].chip,
+        alert && (alert.type === 'mismatch' ? 'ring-2 ring-red-500' : 'ring-2 ring-amber-400'),
+        highlighted && 'ring-2 ring-navy ring-offset-2',
         dimmed && 'opacity-25',
         isEditor ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
       )}
     >
-      <span className={cn('h-2 w-2 shrink-0 rounded-full', MACROS[vehicle.macro].dot)} />
-      <span className="tabular-nums text-navy">{vehicle.frota}</span>
+      {vehicle.frota}
       {alert && <AlertTriangle className={cn('h-3 w-3', alert.type === 'mismatch' ? 'text-red-600' : 'text-amber-600')} />}
     </button>
   );

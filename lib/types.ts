@@ -1,4 +1,4 @@
-export type Macro = 'carregamento' | 'viagem' | 'descarregando' | 'vazio';
+export type Macro = 'vazio' | 'destinado' | 'carga' | 'viagem' | 'descarga' | 'manutencao';
 
 export type Section = 'exportacao' | 'status' | 'importacao';
 

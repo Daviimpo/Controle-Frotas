@@ -7,7 +7,8 @@ import { FleetBoard } from '@/components/board/fleet-board';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useBoard } from '@/components/providers/board-provider';
 import { Button, Input, PageHeader, Skeleton } from '@/components/ui';
-import { MACRO_ORDER, MACROS, STALE_HOURS } from '@/lib/macro';
+import { MACRO_ORDER, STALE_HOURS } from '@/lib/macro';
+import { MacroLabel } from '@/components/board/frota-badge';
 import { vehicleAlert } from '@/lib/board-ops';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -85,19 +86,17 @@ function Quadro() {
 
 function Legend() {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs text-slate-600 shadow-sm">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs text-slate-600 shadow-sm">
       <span className="font-semibold text-slate-500">Macro:</span>
       {MACRO_ORDER.map((m) => (
-        <span key={m} className="inline-flex items-center gap-1.5">
-          <span className={cn('h-2.5 w-2.5 rounded-full', MACROS[m].dot)} /> {MACROS[m].label}
-        </span>
+        <MacroLabel key={m} macro={m} className="px-2 py-0.5 text-[11px]" />
       ))}
       <span className="hidden h-4 w-px bg-slate-200 sm:block" />
       <span className="inline-flex items-center gap-1.5">
-        <AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> Sem atualizar há +{STALE_HOURS}h
+        <span className="h-3.5 w-3.5 rounded ring-2 ring-amber-400" /> Sem atualizar há +{STALE_HOURS}h
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <AlertTriangle className="h-3.5 w-3.5 text-red-600" /> Macro incompatível com a posição
+        <span className="h-3.5 w-3.5 rounded ring-2 ring-red-500" /> Macro incompatível com a posição
       </span>
     </div>
   );

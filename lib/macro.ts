@@ -1,33 +1,85 @@
-import type { Column, Group, Macro, Vehicle } from './types';
-import { hoursSince } from './utils';
+import type { BoardState, Column, Group, Macro, Vehicle } from './types';
+import { hoursSince, normalizeText } from './utils';
 
 /** Horas sem atualização do macro no rastreador até gerar alerta */
 export const STALE_HOURS = 12;
 
-export const MACRO_ORDER: Macro[] = ['carregamento', 'viagem', 'descarregando', 'vazio'];
+export const MACRO_ORDER: Macro[] = ['vazio', 'destinado', 'carga', 'viagem', 'descarga', 'manutencao'];
 
-export const MACROS: Record<Macro, { label: string; dot: string; badge: string }> = {
-  carregamento: {
-    label: 'Carregamento',
-    dot: 'bg-amber-500',
-    badge: 'bg-amber-50 text-amber-800 ring-amber-200',
+/**
+ * Cores oficiais das macros (mesmas da planilha operacional).
+ * - chip: badge da frota no quadro (bg + texto + borda)
+ * - badge: rótulos com ring (diálogos, tabelas)
+ * - dot: marcador pequeno (legendas)
+ * As classes ficam escritas por extenso para o Tailwind gerá-las.
+ */
+export const MACROS: Record<Macro, { label: string; chip: string; badge: string; dot: string }> = {
+  vazio: {
+    label: 'Vazio',
+    chip: 'bg-[#FFF2CC] text-[#B45F06] border-[#FFE599]',
+    badge: 'bg-[#FFF2CC] text-[#B45F06] ring-[#FFE599]',
+    dot: 'bg-[#B45F06]',
+  },
+  destinado: {
+    label: 'Destinado',
+    chip: 'bg-[#D9EAD3] text-[#274E13] border-[#B6D7A8]',
+    badge: 'bg-[#D9EAD3] text-[#274E13] ring-[#B6D7A8]',
+    dot: 'bg-[#274E13]',
+  },
+  carga: {
+    label: 'Carga',
+    chip: 'bg-[#C9DAF8] text-[#1C4587] border-[#A4C2F4]',
+    badge: 'bg-[#C9DAF8] text-[#1C4587] ring-[#A4C2F4]',
+    dot: 'bg-[#1C4587]',
   },
   viagem: {
     label: 'Viagem',
-    dot: 'bg-blue-600',
-    badge: 'bg-blue-50 text-blue-800 ring-blue-200',
+    chip: 'bg-[#CFE2F3] text-[#0B5394] border-[#9FC5E8]',
+    badge: 'bg-[#CFE2F3] text-[#0B5394] ring-[#9FC5E8]',
+    dot: 'bg-[#0B5394]',
   },
-  descarregando: {
-    label: 'Descarregando',
-    dot: 'bg-violet-500',
-    badge: 'bg-violet-50 text-violet-800 ring-violet-200',
+  descarga: {
+    label: 'Descarga',
+    chip: 'bg-[#FCE5CD] text-[#783F04] border-[#F9CB9C]',
+    badge: 'bg-[#FCE5CD] text-[#783F04] ring-[#F9CB9C]',
+    dot: 'bg-[#783F04]',
   },
-  vazio: {
-    label: 'Vazio',
-    dot: 'bg-slate-400',
-    badge: 'bg-slate-100 text-slate-700 ring-slate-200',
+  manutencao: {
+    label: 'Manutenção',
+    chip: 'bg-[#EFEFEF] text-[#434343] border-[#D9D9D9]',
+    badge: 'bg-[#EFEFEF] text-[#434343] ring-[#D9D9D9]',
+    dot: 'bg-[#434343]',
   },
 };
+
+/** Nomes antigos / variações vindas do rastreador ou de planilhas */
+const ALIASES: Record<string, Macro> = {
+  carregamento: 'carga',
+  carregando: 'carga',
+  carregado: 'carga',
+  descarregando: 'descarga',
+  descarregamento: 'descarga',
+  manutencao: 'manutencao',
+  oficina: 'manutencao',
+};
+
+/** Aceita "VIAGEM", "Manutenção", "carregamento"… e devolve a macro padronizada (padrão: viagem) */
+export function normalizeMacro(value: unknown): Macro {
+  const k = normalizeText(String(value ?? '')).replace(/[^a-z]/g, '');
+  if (k in MACROS) return k as Macro;
+  return ALIASES[k] ?? 'viagem';
+}
+
+/** Converte estados salvos com macros antigas para o padrão atual */
+export function migrateMacros(state: BoardState): BoardState {
+  const fix = (list?: Macro[]) => (list ? Array.from(new Set(list.map(normalizeMacro))) : undefined);
+  return {
+    ...state,
+    vehicles: state.vehicles.map((v) => ({ ...v, macro: normalizeMacro(v.macro) })),
+    columns: state.columns.map((c) => ({ ...c, expectedMacros: fix(c.expectedMacros) })),
+    groups: state.groups.map((g) => ({ ...g, expectedMacros: fix(g.expectedMacros) })),
+  };
+}
 
 export function expectedMacros(column?: Column, group?: Group): Macro[] | undefined {
   return group?.expectedMacros ?? column?.expectedMacros;

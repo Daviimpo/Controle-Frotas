@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, Clock, FileText, Globe, LayoutDashboard, MapPin, Navigation, PackageOpen, RotateCcw, Search, Truck, Warehouse } from 'lucide-react';
 import { useBoard } from '@/components/providers/board-provider';
+import { FrotaBadge } from '@/components/board/frota-badge';
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, PageHeader, Skeleton } from '@/components/ui';
 import { columnCount, locationLabel, sectionCount, unassignedVehicles, vehicleAlert } from '@/lib/board-ops';
 import { MACROS } from '@/lib/macro';
@@ -145,8 +146,8 @@ function Dashboard({ state }: { state: BoardState }) {
                       <td className="px-5 py-2.5">
                         <div className="flex flex-wrap gap-1">
                           {g.frotaIds.map((id) => (
-                            <Link key={id} href={`/quadro?q=${vehicleById.get(id)?.frota ?? ''}`}>
-                              <Badge variant="brand" className="hover:bg-brand-100">{vehicleById.get(id)?.frota}</Badge>
+                            <Link key={id} href={`/quadro?q=${vehicleById.get(id)?.frota ?? ''}`} className="hover:opacity-80">
+                              <FrotaBadge numero={vehicleById.get(id)?.frota ?? ''} macro={vehicleById.get(id)?.macro} className="px-2 py-0.5" />
                             </Link>
                           ))}
                         </div>

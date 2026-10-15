@@ -2,8 +2,8 @@ import type { BoardState, Column, Group, Macro, Vehicle } from './types';
 
 export const SEM_PROGRAMACAO = 'sem-programacao';
 
-const EXPORT_MACROS: Macro[] = ['viagem', 'descarregando'];
-const IMPORT_MACROS: Macro[] = ['carregamento', 'viagem', 'descarregando'];
+const EXPORT_MACROS: Macro[] = ['viagem', 'descarga'];
+const IMPORT_MACROS: Macro[] = ['carga', 'viagem', 'descarga'];
 
 export const DEFAULT_COLUMNS: Column[] = [
   // Exportação — destinos
@@ -14,9 +14,9 @@ export const DEFAULT_COLUMNS: Column[] = [
   { id: 'zarate', title: 'Zárate', section: 'exportacao', country: 'AR', expectedMacros: EXPORT_MACROS },
   { id: 'santiago-cl', title: 'Santiago CL', section: 'exportacao', country: 'CL', expectedMacros: EXPORT_MACROS },
   // Status operacionais
-  { id: 'a-caminho', title: 'A Caminho', section: 'status', subtitle: 'Carregados / Vazios', expectedMacros: ['carregamento', 'viagem', 'vazio'] },
-  { id: 'aguardando', title: 'Aguardando Carga', section: 'status', subtitle: 'Porto Alegre', country: 'BR', expectedMacros: ['vazio', 'carregamento'] },
-  { id: 'voltando', title: 'Voltando', section: 'status', subtitle: 'Retorno ao Brasil', expectedMacros: ['vazio', 'viagem'] },
+  { id: 'a-caminho', title: 'A Caminho', section: 'status', subtitle: 'Carregados / Vazios', expectedMacros: ['vazio', 'destinado', 'carga', 'viagem'] },
+  { id: 'aguardando', title: 'Aguardando Carga', section: 'status', subtitle: 'Porto Alegre', country: 'BR', expectedMacros: ['vazio', 'destinado', 'carga'] },
+  { id: 'voltando', title: 'Voltando', section: 'status', subtitle: 'Retorno ao Brasil', expectedMacros: ['vazio', 'destinado', 'viagem'] },
   { id: SEM_PROGRAMACAO, title: 'Sem Programação', section: 'status', subtitle: 'Frotas disponíveis' },
   // Importação
   { id: 'uruguai-imp', title: 'Uruguai', section: 'importacao', country: 'UY', expectedMacros: IMPORT_MACROS },
@@ -78,36 +78,39 @@ export function createMockState(): BoardState {
 
   // Exportação
   g('buenos-aires', { programacao: '384', crt: '57305', cliente: 'Sulpapéis' }, [161, 177, 243].map(id), 'viagem');
-  g('buenos-aires', { programacao: '391', crt: '57412', cliente: 'CMPC Celulose' }, take(2), 'descarregando');
+  g('buenos-aires', { programacao: '391', crt: '57412', cliente: 'CMPC Celulose' }, take(2), 'descarga');
   g('rosario', { programacao: '386', crt: '57318', cliente: 'Basso' }, take(2), 'viagem');
   g('pilar', { programacao: '388', crt: '57350', cliente: 'Sulpapéis' }, take(3), 'viagem');
-  g('cordoba', { programacao: '379', crt: '57221', cliente: 'Klabin' }, take(1), 'descarregando');
+  g('cordoba', { programacao: '379', crt: '57221', cliente: 'Klabin' }, take(1), 'descarga');
   g('zarate', { programacao: '390', crt: '57401', cliente: 'Braskem' }, take(2), 'viagem');
   g('santiago-cl', { programacao: '372', crt: '57198', cliente: 'Tramontina' }, take(2), 'viagem');
 
   // Status operacionais
-  g('a-caminho', { label: 'Carregados', expectedMacros: ['carregamento', 'viagem'] }, take(4), 'viagem');
-  g('a-caminho', { label: 'Vazios - Sulpapéis', expectedMacros: ['vazio'] }, take(2), 'vazio');
-  g('a-caminho', { label: 'Vazios - Basso', expectedMacros: ['vazio'] }, take(2), 'vazio');
+  g('a-caminho', { label: 'Carregados', expectedMacros: ['carga', 'viagem'] }, take(4), 'viagem');
+  g('a-caminho', { label: 'Vazios - Sulpapéis', expectedMacros: ['vazio', 'destinado'] }, take(2), 'vazio');
+  g('a-caminho', { label: 'Vazios - Basso', expectedMacros: ['vazio', 'destinado'] }, take(2), 'vazio');
   g('aguardando', { label: 'Porto Alegre' }, take(5), 'vazio');
   g('voltando', { label: 'Guaíba x Uruguaiana' }, take(4), 'vazio');
   g('voltando', { label: 'Triunfo x Uruguaiana' }, take(3), 'vazio');
 
   // Importação
-  g('uruguai-imp', { label: 'Salto', crt: '497' }, take(2), 'carregamento');
+  g('uruguai-imp', { label: 'Salto', crt: '497' }, take(2), 'carga');
   g('uruguai-imp', { label: 'Treinta y Tres', crt: '499' }, take(1), 'viagem');
   g('uruguai-imp', { crt: '498' }, take(2), 'viagem');
-  g('uruguai-imp', { crt: '500' }, take(1), 'carregamento');
+  g('uruguai-imp', { crt: '500' }, take(1), 'carga');
   g('argentina-imp', { crt: '3058' }, take(2), 'viagem');
-  g('argentina-imp', { crt: '3046' }, take(2), 'descarregando');
+  g('argentina-imp', { crt: '3046' }, take(2), 'descarga');
 
   // Inconsistências propositais para demonstrar os alertas de macro
   const set = (n: number, patch: Partial<Vehicle>) => Object.assign(vById.get(id(n)) ?? {}, patch);
   set(177, { macroUpdatedAt: ago(16) }); // sem atualizar
   set(others[11], { macro: 'vazio' }); // em "Carregados" mas macro vazio
-  set(others[20], { macro: 'descarregando' }); // aguardando carga com macro descarregando
+  set(others[20], { macro: 'descarga' }); // aguardando carga com macro descarregando
   set(others[25], { macroUpdatedAt: ago(26) });
   set(others[36], { macroUpdatedAt: ago(14) });
+  set(others[16], { macro: 'destinado' }); // vazio já destinado a uma carga
+  set(others[45], { macro: 'manutencao' });
+  set(others[50], { macro: 'manutencao' });
 
   return {
     vehicles,

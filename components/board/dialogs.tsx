@@ -9,7 +9,8 @@ import { addColumn, addGroup, deleteGroup, groupTitle, locate, moveFrota, update
 import { cn, COUNTRY_LABEL, crtLast5, formatDateTime, formatPlate, timeAgo } from '@/lib/utils';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useBoard } from '@/components/providers/board-provider';
-import { Badge, Button, Dialog, Input, Label, Select } from '@/components/ui';
+import { Button, Dialog, Input, Label, Select } from '@/components/ui';
+import { FrotaBadge } from './frota-badge';
 
 // ---------------------------------------------------------------------------
 // Detalhes da frota (público) + atualização de macro / mover (editor)
@@ -63,7 +64,7 @@ export function FrotaDialog({ vehicleId, onClose }: { vehicleId: string | null; 
                 onClick={() => setMacro(m)}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold ring-1 ring-inset transition',
-                  v.macro === m ? MACROS[m].badge : 'bg-white text-slate-400 ring-slate-200',
+                  v.macro === m ? cn(MACROS[m].badge, 'ring-2') : 'bg-white text-slate-400 ring-slate-200',
                   isEditor && v.macro !== m && 'hover:text-slate-700 hover:ring-slate-300',
                   !isEditor && 'cursor-default',
                 )}
@@ -241,9 +242,7 @@ export function GroupDialog({
         <p className="mt-3 text-xs text-slate-500">
           Frotas neste bloco:{' '}
           {group.frotaIds.map((id) => (
-            <Badge key={id} variant="brand" className="mr-1">
-              {state.vehicles.find((v) => v.id === id)?.frota}
-            </Badge>
+            <FrotaBadge key={id} numero={state.vehicles.find((v) => v.id === id)?.frota ?? ''} macro={state.vehicles.find((v) => v.id === id)?.macro} className="mb-1 mr-1 px-2 py-0.5" />
           ))}
           <br />
           Ao excluir o bloco, as frotas voltam para “Sem Programação”.

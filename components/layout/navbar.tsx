@@ -1,6 +1,8 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
+import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Columns3, Eye, FileUp, LayoutDashboard, LogIn, LogOut, RefreshCw, Truck } from 'lucide-react';
 import { useAuth } from '@/components/providers/auth-provider';
@@ -15,17 +17,27 @@ const TABS = [
   { href: '/cadastro', label: 'Cadastro Frotas', icon: Truck },
 ];
 
+/**
+ * Logo oficial em /public/logo.png (160×40). Enquanto o arquivo não existir,
+ * mostra a marca em texto no mesmo estilo.
+ */
 export function Logo() {
+  const [imgOk, setImgOk] = useState(true);
   return (
     <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="Polivias Transportes">
-      {/* Substitua por <Image src="/logo-polivias.svg" …/> quando tiver o arquivo oficial */}
-      <div className="grid h-9 w-9 place-items-center rounded-md bg-navy shadow-sm">
-        <Truck className="h-5 w-5 text-white" strokeWidth={2.25} />
-      </div>
-      <div className="leading-none">
-        <div className="text-[17px] font-extrabold tracking-tight text-navy">POLIVIAS</div>
-        <div className="mt-0.5 text-[9.5px] font-bold tracking-[0.28em] text-slate-500">TRANSPORTES</div>
-      </div>
+      {imgOk ? (
+        <Image src="/logo.png" alt="Polivias Transportes" width={160} height={40} priority className="h-10 w-auto" onError={() => setImgOk(false)} />
+      ) : (
+        <>
+          <div className="grid h-9 w-9 place-items-center rounded-md bg-navy shadow-sm">
+            <Truck className="h-5 w-5 text-white" strokeWidth={2.25} />
+          </div>
+          <div className="leading-none">
+            <div className="text-[17px] font-extrabold tracking-tight text-navy">POLIVIAS</div>
+            <div className="mt-0.5 text-[9.5px] font-bold tracking-[0.28em] text-slate-500">TRANSPORTES</div>
+          </div>
+        </>
+      )}
     </Link>
   );
 }

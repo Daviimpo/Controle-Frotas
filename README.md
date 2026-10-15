@@ -21,9 +21,11 @@ Login padrão (troque em `POLIVIAS_USERS`): **admin / polivias@2026** · **opera
 | **Dashboard** | KPIs, distribuição por destino/status, programações ativas, busca “Onde está a frota?” e lista de alertas de macro | Público |
 | **Quadro de Frotas** | Kanban em 3 seções (Exportação · Status Operacionais · Importação). Blocos **P: 384 – CRT 57305** agrupam várias frotas. Arrastar e soltar, criar/editar blocos, novos destinos, atualizar macro, “Mover para…” (celular) | Leitura pública · edição com login |
 | **Importar PDF** | Upload drag‑and‑drop da *Planilla de Programación*; IA extrai placas, CRT (5 últimos dígitos), programação, destino e cliente; cruza placas (cavalo **ou** carreta) com o cadastro; tela de pré-visualização editável antes de alocar | Login |
-| **Cadastro Frotas** | Importa CSV (`;` ou `,`) / Excel, modo *Mesclar* ou *Substituir*, edição inline, nova frota, exportar Excel, modelo CSV | Leitura pública · edição com login |
+| **Cadastro Frotas** | Tabela somente leitura (dados mudam só via planilha CSV/Excel, modo *Mesclar* ou *Substituir*), seleção em massa com exclusão, exportar Excel, modelo CSV | Leitura pública · importar/excluir com login |
 
-**Alertas de macro** (Carregamento / Viagem / Descarregando / Vazio):
+**Macros do rastreador** — VAZIO, DESTINADO, CARGA, VIAGEM, DESCARGA, MANUTENÇÃO. Cada frota no quadro aparece com a cor da sua macro (`MACROS` em `lib/macro.ts`; componente `FrotaBadge` em `components/board/frota-badge.tsx`). Valores como `"VIAGEM"`, `"Manutenção"` ou os nomes antigos (`carregamento`, `descarregando`) são convertidos automaticamente por `normalizeMacro`; macro desconhecida vira VIAGEM.
+
+**Alertas de macro** (contorno no badge):
 - 🟡 macro sem atualização há mais de 12h (`STALE_HOURS` em `lib/macro.ts`);
 - 🔴 macro incompatível com a posição no quadro (ex.: frota em “Carregados” com macro “Vazio”). Os macros esperados ficam em cada coluna/bloco (`expectedMacros`).
 
@@ -59,4 +61,4 @@ lib/
 
 **Integração com rastreador:** hoje o macro é atualizado manualmente no diálogo da frota. Para automatizar, crie uma rota (ex.: `POST /api/macro`) que receba o webhook do rastreador e chame `updateVehicle(state, id, { macro, macroUpdatedAt })`.
 
-**Logo:** o logotipo é renderizado em `components/layout/navbar.tsx` (`<Logo />`). Coloque o arquivo oficial em `public/` e troque pelo `<Image>`.
+**Logo:** coloque o arquivo oficial em `public/logo.png` (160×40). Enquanto ele não existir, a navbar mostra a marca em texto.

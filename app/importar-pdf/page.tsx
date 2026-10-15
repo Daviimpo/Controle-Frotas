@@ -6,6 +6,7 @@ import { ArrowRight, CheckCircle2, FileText, FileUp, Info, Loader2, Lock, LogIn,
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useBoard } from '@/components/providers/board-provider';
+import { FrotaBadge } from '@/components/board/frota-badge';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select } from '@/components/ui';
 import { applyAllocations, findVehicleByPlate, groupTitle, locate, type Allocation } from '@/lib/board-ops';
 import { SEM_PROGRAMACAO } from '@/lib/mock-data';
@@ -402,9 +403,7 @@ export default function ImportarPdfPage() {
                       </div>
                       <div className="flex flex-wrap gap-1.5 p-2.5">
                         {b.frotas.map((id) => (
-                          <Badge key={id} variant="outline" className="text-xs">
-                            {state.vehicles.find((v) => v.id === id)?.frota}
-                          </Badge>
+                          <FrotaBadge key={id} numero={state.vehicles.find((v) => v.id === id)?.frota ?? ''} macro={state.vehicles.find((v) => v.id === id)?.macro} />
                         ))}
                       </div>
                     </div>
