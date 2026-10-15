@@ -76,4 +76,32 @@ export function migrateMacros(state: BoardState): BoardState {
   return {
     ...state,
     vehicles: state.vehicles.map((v) => ({ ...v, macro: normalizeMacro(v.macro) })),
-    columns: state
+    columns: state.columns.map((c) => ({ ...c, expectedMacros: fix(c.expectedMacros) })),
+    groups: state.groups.map((g) => ({ ...g, expectedMacros: fix(g.expectedMacros) })),
+  };
+}
+
+export function expectedMacros(column?: Column, group?: Group): Macro[] | undefined {
+  return group?.expectedMacros ?? column?.expectedMacros;
+}
+
+export interface MacroAlert {
+  type: 'stale' | 'mismatch';
+  message: string;
+}
+
+export function macroAlert(v: Vehicle, expected?: Macro[], now = Date.now()): MacroAlert | null {
+  if (expected && expected.length && !expected.includes(v.macro)) {
+    return {
+      type: 'mismatch',
+      message: `Macro "${MACROS[v.macro].label}" não confere com a posição no quadro (esperado: ${expected
+        .map((m) => MACROS[m].label)
+        .join(' / ')})`,
+    };
+  }
+  const h = hoursSince(v.macroUpdatedAt, now);
+  if (h > STALE_HOURS) {
+    return { type: 'stale', message: `Macro sem atualização no rastreador há ${Math.floor(h)}h` };
+  }
+  return null;
+}
