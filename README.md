@@ -29,9 +29,21 @@ Login padrão (troque em `POLIVIAS_USERS`): **admin / polivias@2026** · **opera
 - 🟡 macro sem atualização há mais de 12h (`STALE_HOURS` em `lib/macro.ts`);
 - 🔴 macro incompatível com a posição no quadro (ex.: frota em “Carregados” com macro “Vazio”). Os macros esperados ficam em cada coluna/bloco (`expectedMacros`).
 
-## Leitura de PDF com IA
+## Importação da Planilla de Programación (Argentina)
 
-Defina `ANTHROPIC_API_KEY` (e opcionalmente `ANTHROPIC_MODEL`). O PDF é enviado como bloco `document` para a API de Mensagens da Anthropic, que devolve JSON estruturado (`lib/server/pdf-extract.ts`). Sem a chave, ou em caso de erro, o sistema usa a **extração simulada** com placas reais do cadastro — o botão “Testar com PDF de exemplo” demonstra o fluxo completo.
+| Campo | Regra | Exemplo |
+|---|---|---|
+| Programação | número antes da barra em “Planilla de Programacion N§ 388/2026” | `388` |
+| CRT | último grupo numérico do CONOCIMIENTO, até 6 dígitos, sem zeros à esquerda | `BR-135.057340` → `57340` |
+| Placas | CAMION e SEMI-REMOLQUE limpas (`OLS-010.-` → `OLS010`) e cruzadas com `frotas` (cavalo primeiro, depois carreta). Só as encontradas são vinculadas | Frota 230 |
+| Cliente | penúltima coluna | `SOFTYS` |
+| Destino | última coluna → coluna do quadro pelo nome | `ZARATE` → `zarate` |
+
+Regras em `lib/pdf/planilla.ts` (funções puras). A leitura é feita assim:
+1. **PDF com texto** (gerado pelo sistema): parser determinístico, sem custo de IA.
+2. **PDF digitalizado** (foto/scan com anotações): Claude lê a tabela (`ANTHROPIC_API_KEY`), e o retorno passa pelas mesmas regras. Sem a chave, aparece um erro claro e nenhum dado inventado.
+
+**Confirmar** (`POST /api/pdf/confirm`) cria ou atualiza o bloco Programação + CRT em `quadro_frotas`: se o bloco já existir em qualquer coluna, ele vai para a coluna do destino. As frotas saem do bloco anterior, e a macro escolhida (padrão VIAGEM) é gravada em `frotas`. Reimportar o mesmo PDF não duplica blocos.
 
 ## Arquitetura
 
