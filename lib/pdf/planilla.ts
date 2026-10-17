@@ -32,24 +32,24 @@ BR-135.057340 13/10/26 OLS-010.- MYZ-248.- 26249.00 13 | | | | BR-135.139350 T 1
 BR-135.057340 13/10/26 FRT-619.- GKA-881.- 26225.00 13 | | | | BR-135.139351 T 13867.34 CELULOSA 0.00 SOFTYS ZARATE
 BR-135.057356 13/10/26 IXJ-839.- HWV-193.- 26178.00 13 | | | | BR-135.139473 T 13861.65 CELULOSA 0.00 SOFTYS ZARATE`;
 
-export function cleanPlate(plate: string): string {
+export function cleanPlate(plate?: string | null): string {
   if (!plate) return '';
   return plate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
 }
 
-export function programacaoFromHeader(text: string): string {
+export function programacaoFromHeader(text?: string | null): string {
+  if (!text) return '';
   const match = text.match(/Planilla\s+de\s+Programacion\s+N[§\d]*\s+(\d+)\/(\d+)/i);
   return match ? match[1] : '';
 }
 
-export function crtFromConocimiento(conocimiento: string): string {
+export function crtFromConocimiento(conocimiento?: string | null): string {
   if (!conocimiento) return '';
   const clean = conocimiento.replace('BR-135.', '').trim();
   return clean.replace(/^0+/, '') || clean;
 }
 
-// Aceita até 3 argumentos para compatibilidade total com a tela de importação
-export function destinoToColumnId(destinoRaw: string, columns?: any[], tipo?: string): string {
+export function destinoToColumnId(destinoRaw?: string | null, columns?: any[], tipo?: string): string {
   const d = (destinoRaw || '').toUpperCase().trim();
   if (d.includes('ZARATE')) return 'zarate';
   if (d.includes('BUENOS AIRES') || d.includes('BS AS') || d.includes('CABA')) return 'buenos-aires';
