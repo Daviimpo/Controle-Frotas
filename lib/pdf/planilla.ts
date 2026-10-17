@@ -1,16 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
 export interface PlanillaRow {
-  programacao: string;
-  crt: string;
-  conocimientoOriginal: string;
-  placaCavalo: string;
-  placaCarreta: string;
-  cliente: string;
-  destino: string;
+  programacao?: string;
+  crt?: string;
+  conocimientoOriginal?: string;
+  placaCavalo?: string;
+  placaCarreta?: string;
+  cliente?: string;
+  destino?: string;
   frotaEncontrada?: string;
   matchedBy?: 'cavalo' | 'carreta';
-  // Campos legados para compatibilidade com lib/server/pdf-extract.ts
+  // Campos para compatibilidade com pdf-extract.ts
   conocimiento?: string;
   camion?: string;
   semiRemolque?: string;
