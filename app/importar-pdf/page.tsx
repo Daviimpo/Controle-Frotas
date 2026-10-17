@@ -6,12 +6,14 @@ import { ArrowRight, CheckCircle2, FileText, FileUp, Info, Loader2, Lock, LogIn,
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useBoard } from '@/components/providers/board-provider';
-import { FrotaBadge } from '@/components/board/frota-badge';
+import { FrotaBadge, MacroLabel } from '@/components/board/frota-badge';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select } from '@/components/ui';
-import { applyAllocations, findVehicleByPlate, groupTitle, locate, type Allocation } from '@/lib/board-ops';
+import { groupTitle, locate } from '@/lib/board-ops';
+import { MACRO_ORDER, MACROS } from '@/lib/macro';
 import { SEM_PROGRAMACAO } from '@/lib/mock-data';
-import type { BoardState, Column, ExtractionResult } from '@/lib/types';
-import { cn, crtLast5, formatPlate, normalizeText } from '@/lib/utils';
+import { destinoToColumnId } from '@/lib/pdf/planilla';
+import type { BoardState, ExtractionResult, Macro } from '@/lib/types';
+import { cn, formatPlate } from '@/lib/utils';
 
 type Step = 'idle' | 'processing' | 'review' | 'done';
 type Tipo = 'exportacao' | 'importacao';
@@ -32,27 +34,17 @@ interface ReviewRow {
   cliente: string;
 }
 
-const STEPS = ['Lendo o documento PDF', 'Identificando placas (Camión / Acoplado)', 'Extraindo Programação e CRT', 'Cruzando placas com o cadastro de frotas'];
+const STEPS = ['Lendo o documento PDF', 'Programação e CONOCIMIENTO (CRT)', 'CAMION / SEMI-REMOLQUE, cliente e destino', 'Cruzando placas com a tabela de frotas'];
 
-/** Associa o texto de destino do PDF a uma coluna do quadro */
-function matchColumn(destino: string, tipo: Tipo, pais: string | null | undefined, columns: Column[]) {
-  const d = normalizeText(destino);
-  if (tipo === 'importacao') {
-    const uy = /uruguai|uruguay|salto|treinta|montevid|rivera|paysandu/.test(d) || pais === 'UY';
-    const target = columns.find((c) => c.section === 'importacao' && c.country === (uy ? 'UY' : 'AR'));
-    return target?.id ?? columns.find((c) => c.section === 'importacao')?.id ?? '';
-  }
-  const exp = columns.filter((c) => c.section === 'exportacao');
-  const hit = exp.find((c) => {
-    const t = normalizeText(c.title).replace(/\b(cl|ar|uy)\b/g, '').trim();
-    return d.includes(t) || t.includes(d.split(/[,-]/)[0].trim());
-  });
-  return hit?.id ?? '';
-}
+const SOURCE_LABEL: Record<ExtractionResult['source'], { text: string; variant: 'success' | 'brand' | 'warning' }> = {
+  texto: { text: 'Lido do texto do PDF', variant: 'success' },
+  claude: { text: 'Lido por IA (Claude)', variant: 'brand' },
+  exemplo: { text: 'Exemplo', variant: 'warning' },
+};
 
 export default function ImportarPdfPage() {
   const { isEditor, openLogin, loading } = useAuth();
-  const { state, mutate } = useBoard();
+  const { state, serverAction } = useBoard();
   const inputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>('idle');
   const [progress, setProgress] = useState(0);
@@ -61,6 +53,8 @@ export default function ImportarPdfPage() {
   const [result, setResult] = useState<ExtractionResult | null>(null);
   const [tipo, setTipo] = useState<Tipo>('exportacao');
   const [rows, setRows] = useState<ReviewRow[]>([]);
+  const [macro, setMacro] = useState<Macro>('viagem');
+  const [saving, setSaving] = useState(false);
   const [summary, setSummary] = useState<{ frotas: number; blocos: number } | null>(null);
 
   async function handleFile(file: File | null) {
@@ -69,64 +63,57 @@ export default function ImportarPdfPage() {
       toast.error('Envie um arquivo PDF.');
       return;
     }
-    setFileName(file?.name ?? 'Exemplo — Planilla de Programación Argentina');
+    setFileName(file?.name ?? 'Exemplo — Planilla de Programación Nº 388/2026');
     setStep('processing');
     setProgress(0);
-    const timer = setInterval(() => setProgress((p) => Math.min(p + 1, STEPS.length - 1)), 900);
+    const timer = setInterval(() => setProgress((p) => Math.min(p + 1, STEPS.length - 1)), 700);
 
     try {
       const fd = new FormData();
       if (file) fd.append('file', file);
       else fd.append('demo', '1');
-      const [res] = await Promise.all([fetch('/api/extract-pdf', { method: 'POST', body: fd }), new Promise((r) => setTimeout(r, 3200))]);
+      const [res] = await Promise.all([fetch('/api/extract-pdf', { method: 'POST', body: fd }), new Promise((r) => setTimeout(r, 2200))]);
       const data = (await res.json()) as ExtractionResult & { error?: string };
       if (!res.ok) throw new Error(data.error || 'Falha ao processar o PDF');
       setProgress(STEPS.length);
-      buildReview(data, state);
+      buildReview(data);
       setStep('review');
       if (data.warning) toast.warning(data.warning);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Falha ao processar o PDF');
+      toast.error('Não foi possível ler o PDF', { description: err instanceof Error ? err.message : undefined, duration: 10000 });
       setStep('idle');
     } finally {
       clearInterval(timer);
     }
   }
 
-  function buildReview(data: ExtractionResult, s: BoardState) {
-    const t: Tipo = data.tipo === 'importacao' ? 'importacao' : 'exportacao';
+  /** O servidor já aplicou as regras e cruzou as placas com a tabela `frotas` */
+  function buildReview(data: ExtractionResult) {
     setResult(data);
-    setTipo(t);
+    setTipo(data.tipo === 'importacao' ? 'importacao' : 'exportacao');
     setRows(
-      data.rows.map((r, i) => {
-        const byCavalo = findVehicleByPlate(s, r.placaCavalo);
-        const byCarreta = byCavalo ? undefined : findVehicleByPlate(s, r.placaCarreta);
-        const v = byCavalo ?? byCarreta;
-        const crtOriginal = String(r.crt ?? '');
-        const destino = String(r.destino ?? '');
-        return {
-          key: `r${i}`,
-          include: !!v,
-          placaCavalo: r.placaCavalo,
-          placaCarreta: String(r.placaCarreta ?? ''),
-          motorista: String(r.motorista ?? ''),
-          vehicleId: v?.id ?? '',
-          matchedBy: byCavalo ? 'cavalo' : byCarreta ? 'carreta' : null,
-          crtOriginal,
-          crt: t === 'exportacao' ? crtLast5(crtOriginal) : crtOriginal.replace(/\D/g, '').slice(-5),
-          programacao: String(r.programacao ?? data.programacao ?? '').replace(/\D/g, ''),
-          destino,
-          columnId: matchColumn(destino, t, data.pais, s.columns),
-          cliente: String(r.cliente ?? ''),
-        };
-      }),
+      data.rows.map((r, i) => ({
+        key: `r${i}`,
+        include: !!r.vehicleId, // só vincula frotas encontradas no cadastro
+        placaCavalo: r.placaCavalo,
+        placaCarreta: String(r.placaCarreta ?? ''),
+        motorista: String(r.motorista ?? ''),
+        vehicleId: r.vehicleId ?? '',
+        matchedBy: r.matchedBy ?? null,
+        crtOriginal: String(r.conocimiento ?? ''),
+        crt: String(r.crt ?? ''),
+        programacao: String(r.programacao ?? data.programacao ?? ''),
+        destino: String(r.destino ?? ''),
+        columnId: r.columnId ?? '',
+        cliente: String(r.cliente ?? ''),
+      })),
     );
   }
 
   function changeTipo(t: Tipo) {
-    if (!state || !result) return;
+    if (!state) return;
     setTipo(t);
-    setRows((rs) => rs.map((r) => ({ ...r, columnId: matchColumn(r.destino, t, result.pais, state.columns) })));
+    setRows((rs) => rs.map((r) => ({ ...r, columnId: destinoToColumnId(r.destino, state.columns, t) })));
   }
 
   const update = (key: string, patch: Partial<ReviewRow>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -135,26 +122,32 @@ export default function ImportarPdfPage() {
   const blocks = useMemo(() => {
     const map = new Map<string, { columnId: string; programacao: string; crt: string; cliente: string; frotas: string[] }>();
     for (const r of ready) {
-      const k = `${r.columnId}|${r.programacao}|${r.crt}`;
+      const k = `${r.programacao}|${r.crt}`;
       const b = map.get(k) ?? { columnId: r.columnId, programacao: r.programacao, crt: r.crt, cliente: r.cliente, frotas: [] };
-      b.frotas.push(r.vehicleId);
+      if (!b.frotas.includes(r.vehicleId)) b.frotas.push(r.vehicleId);
       map.set(k, b);
     }
     return Array.from(map.values());
   }, [ready]);
 
-  function confirm() {
-    const allocs: Allocation[] = ready.map((r) => ({
-      vehicleId: r.vehicleId,
-      columnId: r.columnId,
-      programacao: r.programacao || undefined,
-      crt: r.crt || undefined,
-      cliente: r.cliente || undefined,
-    }));
-    mutate((s) => applyAllocations(s, allocs));
-    setSummary({ frotas: allocs.length, blocos: blocks.length });
-    setStep('done');
-    toast.success(`${allocs.length} frota(s) alocadas no quadro.`);
+  async function confirm() {
+    setSaving(true);
+    try {
+      const r = await serverAction<{ state: BoardState; frotas: number; blocos: number }>('/api/pdf/confirm', {
+        method: 'POST',
+        body: {
+          macro,
+          allocations: ready.map((x) => ({ vehicleId: x.vehicleId, columnId: x.columnId, programacao: x.programacao, crt: x.crt, cliente: x.cliente })),
+        },
+      });
+      setSummary({ frotas: r.frotas, blocos: r.blocos });
+      setStep('done');
+      toast.success(`${r.frotas} frota(s) alocadas no quadro.`);
+    } catch (err) {
+      toast.error('A programação não foi salva.', { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setSaving(false);
+    }
   }
 
   function reset() {
@@ -234,7 +227,7 @@ export default function ImportarPdfPage() {
             <div className="mt-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <p className="flex items-start gap-2 text-xs text-slate-500">
                 <Sparkles className="mt-px h-3.5 w-3.5 shrink-0 text-brand" />
-                A IA extrai Placas (Camión/Acoplado), CRT (somente os 5 últimos dígitos), Programação, Destino e Cliente. Nada é alterado antes da sua confirmação.
+                Extrai Programação (Nº antes da barra), CRT (final do CONOCIMIENTO), placas CAMION/SEMI-REMOLQUE, Cliente e Destino. PDFs com texto são lidos direto; digitalizados, pela IA. Nada é gravado antes da sua confirmação.
               </p>
               <Button variant="outline" size="sm" onClick={() => handleFile(null)}>
                 <FileText className="h-3.5 w-3.5" /> Testar com PDF de exemplo
@@ -252,7 +245,7 @@ export default function ImportarPdfPage() {
                 <Sparkles className="h-5 w-5 animate-pulse text-brand" />
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-slate-800">Processando com IA…</p>
+                <p className="font-semibold text-slate-800">Lendo a planilla…</p>
                 <p className="truncate text-xs text-slate-500">{fileName}</p>
               </div>
             </div>
@@ -281,10 +274,10 @@ export default function ImportarPdfPage() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   Pré-visualização da extração
-                  <Badge variant={result.source === 'claude' ? 'success' : 'warning'}>{result.source === 'claude' ? 'Lido por IA (Claude)' : 'Simulação'}</Badge>
+                  <Badge variant={SOURCE_LABEL[result.source].variant}>{SOURCE_LABEL[result.source].text}</Badge>
                 </CardTitle>
                 <CardDescription>
-                  {result.documento} {result.programacao && <>· Programação {result.programacao}</>} · {rows.length} linha(s)
+                  {result.documento} {result.programacao && <>· Programação {result.programacao}</>} · {rows.length} linha(s) · {rows.filter((r) => r.vehicleId).length} frota(s) encontrada(s) no cadastro
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -307,11 +300,11 @@ export default function ImportarPdfPage() {
                 <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-10 px-4 py-2.5" />
-                    <th className="px-3 py-2.5">Camión / Acoplado (PDF)</th>
+                    <th className="px-3 py-2.5">Camion / Semi-remolque</th>
                     <th className="px-3 py-2.5">Frota (cadastro)</th>
                     <th className="px-3 py-2.5">Programação</th>
-                    <th className="px-3 py-2.5">CRT</th>
-                    <th className="px-3 py-2.5">Destino no quadro</th>
+                    <th className="px-3 py-2.5">CRT (Conocimiento)</th>
+                    <th className="px-3 py-2.5">Destino → coluna</th>
                     <th className="px-3 py-2.5">Cliente</th>
                   </tr>
                 </thead>
@@ -325,8 +318,8 @@ export default function ImportarPdfPage() {
                           <input type="checkbox" className="h-4 w-4 accent-[#0B2545]" checked={r.include} onChange={(e) => update(r.key, { include: e.target.checked })} />
                         </td>
                         <td className="px-3 py-2.5">
-                          <div className="font-mono text-[13px] font-semibold text-slate-800">{r.placaCavalo}</div>
-                          <div className="font-mono text-[11px] text-slate-500">{r.placaCarreta || '—'}</div>
+                          <div className="font-mono text-[13px] font-semibold text-slate-800">{formatPlate(r.placaCavalo) || '—'}</div>
+                          <div className="font-mono text-[11px] text-slate-500">{formatPlate(r.placaCarreta) || '—'}</div>
                           {r.motorista && <div className="text-[11px] text-slate-400">{r.motorista}</div>}
                         </td>
                         <td className="px-3 py-2.5">
@@ -343,9 +336,9 @@ export default function ImportarPdfPage() {
                             ))}
                           </Select>
                           <div className="mt-1 text-[10.5px]">
-                            {r.matchedBy === 'cavalo' && <span className="text-emerald-700">✓ pela placa do cavalo</span>}
-                            {r.matchedBy === 'carreta' && <span className="text-emerald-700">✓ pela placa da carreta</span>}
-                            {!r.vehicleId && <span className="text-red-600">Placa não cadastrada</span>}
+                            {r.matchedBy === 'cavalo' && <span className="text-emerald-700">✓ pela placa do CAMION</span>}
+                            {r.matchedBy === 'carreta' && <span className="text-emerald-700">✓ pela placa do SEMI-REMOLQUE</span>}
+                            {!r.vehicleId && <span className="text-red-600">Placas não cadastradas — não será vinculada</span>}
                             {current?.group && <div className="text-amber-700">Hoje em: {current.column?.title} · {groupTitle(current.group)}</div>}
                           </div>
                         </td>
@@ -415,12 +408,25 @@ export default function ImportarPdfPage() {
                   <TriangleAlert className="h-3.5 w-3.5" /> Linhas marcadas sem frota ou sem destino serão ignoradas.
                 </p>
               )}
+              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5">
+                <span className="text-xs font-semibold text-slate-600">Macro das frotas alocadas:</span>
+                {MACRO_ORDER.map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setMacro(m)}
+                    className={cn('rounded transition', macro === m ? 'ring-2 ring-navy ring-offset-1' : 'opacity-50 hover:opacity-100')}
+                    title={MACROS[m].label}
+                  >
+                    <MacroLabel macro={m} className="px-2 py-0.5 text-[11px]" />
+                  </button>
+                ))}
+              </div>
               <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
                 <Button variant="secondary" onClick={reset}>
                   <RotateCcw className="h-4 w-4" /> Cancelar
                 </Button>
-                <Button onClick={confirm} disabled={!ready.length}>
-                  <CheckCircle2 className="h-4 w-4" /> Confirmar e alocar {ready.length} frota(s)
+                <Button onClick={confirm} disabled={!ready.length || saving}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Confirmar e alocar {ready.length} frota(s)
                 </Button>
               </div>
             </CardContent>
