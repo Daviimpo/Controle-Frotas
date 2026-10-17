@@ -32,8 +32,25 @@ BR-135.057340 13/10/26 OLS-010.- MYZ-248.- 26249.00 13 | | | | BR-135.139350 T 1
 BR-135.057340 13/10/26 FRT-619.- GKA-881.- 26225.00 13 | | | | BR-135.139351 T 13867.34 CELULOSA 0.00 SOFTYS ZARATE
 BR-135.057356 13/10/26 IXJ-839.- HWV-193.- 26178.00 13 | | | | BR-135.139473 T 13861.65 CELULOSA 0.00 SOFTYS ZARATE`;
 
+// Funções utilitárias requeridas pelos módulos da API
+export function cleanPlate(plate: string): string {
+  if (!plate) return '';
+  return plate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+}
+
+export function programacaoFromHeader(text: string): string {
+  const match = text.match(/Planilla\s+de\s+Programacion\s+N[§\d]*\s+(\d+)\/(\d+)/i);
+  return match ? match[1] : '';
+}
+
+export function crtFromConocimiento(conocimiento: string): string {
+  if (!conocimiento) return '';
+  const clean = conocimiento.replace('BR-135.', '').trim();
+  return clean.replace(/^0+/, '') || clean;
+}
+
 export function destinoToColumnId(destinoRaw: string): string {
-  const d = destinoRaw.toUpperCase().trim();
+  const d = (destinoRaw || '').toUpperCase().trim();
   if (d.includes('ZARATE')) return 'zarate';
   if (d.includes('BUENOS AIRES') || d.includes('BS AS') || d.includes('CABA')) return 'buenos-aires';
   if (d.includes('CORDOBA')) return 'cordoba';
@@ -44,21 +61,10 @@ export function destinoToColumnId(destinoRaw: string): string {
   return 'zarate';
 }
 
-function cleanPlate(plate: string): string {
-  return plate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-}
-
-export function parsePlanillaText(txtContent: string): PlanillaRow[] {
+// Parser aceitando o argumento opcional de colunas para compatibilidade
+export function parsePlanillaText(txtContent: string, knownColumns?: string[]): { programacao: string; rows: PlanillaRow[] } {
   const lines = txtContent.split('\n');
-  let programacao = '';
-
-  for (const line of lines) {
-    const progMatch = line.match(/Planilla\s+de\s+Programacion\s+N[§\d]*\s+(\d+)\/(\d+)/i);
-    if (progMatch) {
-      programacao = progMatch[1];
-      break;
-    }
-  }
+  let programacao = programacaoFromHeader(txtContent);
 
   const rows: PlanillaRow[] = [];
 
@@ -76,7 +82,7 @@ export function parsePlanillaText(txtContent: string): PlanillaRow[] {
     if (!crtMatch) continue;
 
     const conocimientoOriginal = crtMatch[1];
-    const crtDigits = conocimientoOriginal.replace('BR-135.', '').replace(/^0+/, '');
+    const crtDigits = crtFromConocimiento(conocimientoOriginal);
 
     const plateMatches = line.match(/([A-Z0-9]{3,4}[-\s]?[A-Z0-9]{3,4}\.-?)/gi);
     const placaCavalo = plateMatches && plateMatches[0] ? cleanPlate(plateMatches[0]) : '';
@@ -105,9 +111,10 @@ export function parsePlanillaText(txtContent: string): PlanillaRow[] {
     });
   }
 
-  return rows;
+  return { programacao, rows };
 }
 
 export function parseTxtPlanilla(txtContent: string): PlanillaRow[] {
-  return parsePlanillaText(txtContent);
+  const result = parsePlanillaText(txtContent);
+  return result.rows;
 }
