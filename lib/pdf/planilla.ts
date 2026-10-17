@@ -10,6 +10,10 @@ export interface PlanillaRow {
   destino: string;
   frotaEncontrada?: string;
   matchedBy?: 'cavalo' | 'carreta';
+  // Campos legados para compatibilidade com lib/server/pdf-extract.ts
+  conocimiento?: string;
+  camion?: string;
+  semiRemolque?: string;
 }
 
 export interface PlanillaGroup {
@@ -107,6 +111,9 @@ export function parsePlanillaText(txtContent: string, knownColumns?: string[]): 
       placaCarreta,
       cliente,
       destino,
+      conocimiento: conocimientoOriginal,
+      camion: placaCavalo,
+      semiRemolque: placaCarreta,
     });
   }
 
