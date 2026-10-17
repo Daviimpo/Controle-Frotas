@@ -32,7 +32,6 @@ BR-135.057340 13/10/26 OLS-010.- MYZ-248.- 26249.00 13 | | | | BR-135.139350 T 1
 BR-135.057340 13/10/26 FRT-619.- GKA-881.- 26225.00 13 | | | | BR-135.139351 T 13867.34 CELULOSA 0.00 SOFTYS ZARATE
 BR-135.057356 13/10/26 IXJ-839.- HWV-193.- 26178.00 13 | | | | BR-135.139473 T 13861.65 CELULOSA 0.00 SOFTYS ZARATE`;
 
-// Funções utilitárias requeridas pelos módulos da API
 export function cleanPlate(plate: string): string {
   if (!plate) return '';
   return plate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
@@ -49,7 +48,8 @@ export function crtFromConocimiento(conocimiento: string): string {
   return clean.replace(/^0+/, '') || clean;
 }
 
-export function destinoToColumnId(destinoRaw: string): string {
+// Aceita até 3 argumentos para compatibilidade total com a tela de importação
+export function destinoToColumnId(destinoRaw: string, columns?: any[], tipo?: string): string {
   const d = (destinoRaw || '').toUpperCase().trim();
   if (d.includes('ZARATE')) return 'zarate';
   if (d.includes('BUENOS AIRES') || d.includes('BS AS') || d.includes('CABA')) return 'buenos-aires';
@@ -61,7 +61,6 @@ export function destinoToColumnId(destinoRaw: string): string {
   return 'zarate';
 }
 
-// Parser aceitando o argumento opcional de colunas para compatibilidade
 export function parsePlanillaText(txtContent: string, knownColumns?: string[]): { programacao: string; rows: PlanillaRow[] } {
   const lines = txtContent.split('\n');
   let programacao = programacaoFromHeader(txtContent);
