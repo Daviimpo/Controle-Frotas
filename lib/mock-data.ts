@@ -112,6 +112,14 @@ export function createMockState(): BoardState {
   set(others[45], { macro: 'manutencao' });
   set(others[50], { macro: 'manutencao' });
 
+  // Placas da Planilla de Programación 388/2026 (exemplo) em frotas sem programação,
+  // para o botão "Testar com PDF de exemplo" mostrar o cruzamento funcionando.
+  const PLANILLA_388: [string, string][] = [
+    ['OLS-010', 'MYZ-248'], ['FRT-619', 'GKA-881'], ['NHP-003', 'NMT-048'], ['FAI-289', 'MYZ-238'], ['KLP-925', 'OCS-652'],
+    ['IXJ-839', 'HWV-193'], ['AH434AK', 'AF244DE'], ['QHK-4E12', 'AE027IR'], ['MBN-687', 'OJG-528'], ['KBG-674', 'IBG-793'],
+  ];
+  PLANILLA_388.forEach(([cavalo, carreta], i) => set(others[42 + i], { placaCavalo: cavalo, placaCarreta: carreta }));
+
   return {
     vehicles,
     columns: DEFAULT_COLUMNS,

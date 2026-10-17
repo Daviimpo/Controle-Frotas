@@ -17,7 +17,9 @@ export function normalizePlate(value?: string | null) {
 /** Exibição padrão: ABC-1234 / ABC-1D23 */
 export function formatPlate(value?: string | null) {
   const n = normalizePlate(value);
-  return n.length === 7 ? `${n.slice(0, 3)}-${n.slice(3)}` : n;
+  if (/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(n)) return `${n.slice(0, 3)}-${n.slice(3)}`; // BR: ABC-1234 / ABC-1D23
+  if (/^[A-Z]{3}\d{3}$/.test(n)) return `${n.slice(0, 3)}-${n.slice(3)}`; // AR antigo: OLS-010
+  return n; // AR Mercosul (AH434AK) e outros formatos
 }
 
 /** Retorna apenas os 5 últimos dígitos do número do CRT/Conhecimento */

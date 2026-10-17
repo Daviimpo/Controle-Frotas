@@ -2,7 +2,7 @@
  * Operações puras (imutáveis) sobre o estado do quadro.
  * Toda alteração passa por aqui — fácil de testar e de portar para um backend.
  */
-import type { BoardState, Column, Group, Section, Vehicle, VehicleInput } from './types';
+import type { BoardState, Column, Group, Macro, Section, Vehicle, VehicleInput } from './types';
 import { SEM_PROGRAMACAO } from './mock-data';
 import { expectedMacros, macroAlert } from './macro';
 import { normalizePlate, slugify, uid } from './utils';
@@ -183,28 +183,29 @@ export interface Allocation {
 }
 
 /**
- * Aloca frotas extraídas do PDF: agrupa por (coluna + programação + CRT),
- * reaproveitando blocos existentes com a mesma identificação.
+ * Aloca frotas extraídas do PDF no quadro.
+ * - Agrupa por Programação + CRT (várias frotas no mesmo bloco).
+ * - Se o bloco P/CRT já existe (em qualquer coluna), ele é ATUALIZADO: vai para a coluna do destino
+ *   e recebe o cliente; senão, é criado.
+ * - Cada frota sai do bloco onde estava e entra no bloco da programação.
+ * - `macro` (opcional) atualiza a macro das frotas alocadas.
  */
-export function applyAllocations(state: BoardState, allocs: Allocation[]): BoardState {
+export function applyAllocations(state: BoardState, allocs: Allocation[], macro?: Macro): BoardState {
   let st = state;
   const keyToGroup = new Map<string, string>();
+  const now = new Date().toISOString();
   for (const a of allocs) {
-    const key = `${a.columnId}|${a.programacao ?? ''}|${a.crt ?? ''}`;
+    const key = `${a.programacao ?? ''}|${a.crt ?? ''}|${a.crt || a.programacao ? '' : a.columnId}`;
     let gid = keyToGroup.get(key);
     if (!gid) {
+      const same = (g: Group) => (g.crt ?? '') === (a.crt ?? '') && (g.programacao ?? '') === (a.programacao ?? '');
       const existing =
         a.crt || a.programacao
-          ? st.groups.find(
-              (g) =>
-                g.columnId === a.columnId &&
-                (g.crt ?? '') === (a.crt ?? '') &&
-                (g.programacao ?? '') === (a.programacao ?? ''),
-            )
+          ? st.groups.find((g) => g.columnId === a.columnId && same(g)) ?? st.groups.find(same)
           : undefined;
       if (existing) {
         gid = existing.id;
-        if (a.cliente && !existing.cliente) st = updateGroup(st, gid, { cliente: a.cliente });
+        st = updateGroup(st, gid, { columnId: a.columnId, ...(a.cliente ? { cliente: a.cliente } : {}) });
       } else {
         const [next, newId] = addGroup(st, {
           columnId: a.columnId,
@@ -219,6 +220,7 @@ export function applyAllocations(state: BoardState, allocs: Allocation[]): Board
       keyToGroup.set(key, gid);
     }
     st = moveFrota(st, a.vehicleId, gid);
+    if (macro) st = updateVehicle(st, a.vehicleId, { macro, macroUpdatedAt: now });
   }
   return st;
 }

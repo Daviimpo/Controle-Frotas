@@ -58,17 +58,26 @@ export interface Session {
 export type VehicleInput = Pick<Vehicle, 'frota' | 'placaCavalo' | 'placaCarreta' | 'motorista'>;
 
 export interface ExtractedRow {
+  /** CONOCIMIENTO original (ex.: BR-135.057340) */
+  conocimiento?: string | null;
   placaCavalo: string;
   placaCarreta?: string | null;
   motorista?: string | null;
+  /** CRT normalizado (ex.: 57340) */
   crt?: string | null;
   programacao?: string | null;
   destino?: string | null;
   cliente?: string | null;
+  // ---- preenchido pelo servidor ao cruzar com a tabela `frotas` e com o quadro ----
+  vehicleId?: string | null;
+  frota?: string | null;
+  matchedBy?: 'cavalo' | 'carreta' | null;
+  columnId?: string | null;
 }
 
 export interface ExtractionResult {
-  source: 'claude' | 'simulacao';
+  /** texto = camada de texto do PDF · claude = leitura por IA (PDF digitalizado) · exemplo = planilla de demonstração */
+  source: 'texto' | 'claude' | 'exemplo';
   documento?: string | null;
   tipo?: 'exportacao' | 'importacao' | null;
   pais?: Country | null;
