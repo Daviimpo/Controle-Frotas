@@ -23,12 +23,21 @@ export async function POST(req: Request) {
       return errorResponse('Nenhuma alocação informada.', 400);
     }
 
-    // 1. Lê o estado atual
+    const sb = getSupabase();
+
+    // 1. Busca as colunas reais cadastradas diretamente na tabela do Supabase
+    const { data: dbColumns, error: colError } = await sb.from('quadro_colunas').select('*').order('ordem');
+    if (colError || !dbColumns || dbColumns.length === 0) {
+      return errorResponse('Nenhuma coluna cadastrada na tabela quadro_colunas do banco.', 400);
+    }
+
+    // 2. Lê o estado atual
     const state = await readState();
     const macro = body.macro || 'viagem';
 
-    const exportColumns = state.columns?.filter((c) => c.section === 'exportacao') || [];
-    const fallbackColumn = exportColumns[0] || state.columns?.[0];
+    // Identifica as colunas de exportação
+    const exportColumns = dbColumns.filter((c: any) => c.secao === 'exportacao');
+    const fallbackColumn = exportColumns[0] || dbColumns[0];
 
     let frotasAlocadas = 0;
     const blocosCriados = new Set<string>();
@@ -36,20 +45,21 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // 2. Determina a coluna no quadro
-      let targetCol = state.columns?.find((c) => c.id === alloc.columnId);
+      // Busca a coluna cadastrada no Supabase correspondente ao ID ou Nome
+      let targetDbCol = dbColumns.find((c: any) => c.id === alloc.columnId);
 
-      if (!targetCol && alloc.columnId) {
+      if (!targetDbCol && alloc.columnId) {
         const cleanSearch = alloc.columnId.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        targetCol = state.columns?.find((c) => {
-          const cleanTitle = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        targetDbCol = dbColumns.find((c: any) => {
+          const cleanTitle = (c.titulo || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           return cleanTitle.includes(cleanSearch) || cleanSearch.includes(cleanTitle);
         });
       }
 
-      const finalColumnId = targetCol?.id || alloc.columnId || fallbackColumn?.id || 'cordoba';
+      // Usa o ID real existente na tabela 'quadro_colunas'
+      const realColumnId = targetDbCol?.id || fallbackColumn.id;
 
-      // 3. Remove a frota de alocações anteriores no quadro
+      // Remove a frota de alocações anteriores no quadro
       if (!state.groups) state.groups = [];
       for (const group of state.groups) {
         group.frotaIds = group.frotaIds.filter((id) => id !== alloc.vehicleId);
@@ -58,15 +68,15 @@ export async function POST(req: Request) {
       // Limpa blocos vazios
       state.groups = state.groups.filter((g) => g.frotaIds.length > 0);
 
-      // 4. Localiza ou cria o bloco de Programação / CRT
+      // Localiza ou cria o bloco com a chave de coluna válida
       let targetGroup = state.groups.find(
-        (g) => g.columnId === finalColumnId && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
+        (g) => g.columnId === realColumnId && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
       );
 
       if (!targetGroup) {
         targetGroup = {
           id: `grp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          columnId: finalColumnId,
+          columnId: realColumnId,
           programacao: alloc.programacao,
           crt: alloc.crt,
           cliente: alloc.cliente || 'VITOPEL / CORDOBA',
@@ -81,9 +91,9 @@ export async function POST(req: Request) {
         frotasAlocadas++;
       }
 
-      blocosCriados.add(`${finalColumnId}_${alloc.programacao}_${alloc.crt}`);
+      blocosCriados.add(`${realColumnId}_${alloc.programacao}_${alloc.crt}`);
 
-      // 5. Atualiza a macro da frota
+      // Atualiza a macro da frota
       const vehicle = state.vehicles.find((v) => v.id === alloc.vehicleId);
       if (vehicle) {
         vehicle.macro = macro;
@@ -91,9 +101,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 6. Grava no Supabase mapeando perfeitamente para as colunas da sua tabela
-    const sb = getSupabase();
-
+    // 3. Salva na tabela quadro_frotas usando os IDs reais válidos
     const blocosRows = state.groups.map((g, i) => ({
       id: g.id,
       column_id: g.columnId,
