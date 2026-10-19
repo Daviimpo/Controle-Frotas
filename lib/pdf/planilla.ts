@@ -53,29 +53,33 @@ export function crtFromConocimiento(conocimiento?: string | null): string {
   return clean.replace(/^0+/, '') || clean;
 }
 
-// Procura a coluna ideal varrendo as colunas cadastradas no quadro
-export function destinoToColumnId(destinoRaw?: string | null, columns?: any[], tipo?: string): string {
-  const d = (destinoRaw || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-  if (!d) return '';
+// Procura dinamicamente o ID da coluna batendo o destino com o TÍTULO das colunas
+export function destinoToColumnId(destinoRaw?: string | null, columns?: any[], tipo: string = 'exportacao'): string {
+  if (!destinoRaw) return '';
+  
+  // Normaliza o destino removendo acentos e espaços (ex: "CORDOBA")
+  const destClean = destinoRaw.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
   if (columns && Array.isArray(columns) && columns.length > 0) {
-    // 1. Tenta achar coluna cujo título coincida com o destino (ex: "CORDOBA")
-    const matchedByTitle = columns.find((c) => {
-      const titleClean = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return titleClean.includes(d) || d.includes(titleClean);
+    // Prioriza colunas da seção selecionada (ex: Exportação)
+    const targetCols = columns.filter((c) => !tipo || c.section === tipo);
+    
+    const matched = targetCols.find((c) => {
+      const titleClean = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      return titleClean.includes(destClean) || destClean.includes(titleClean);
     });
 
-    if (matchedByTitle) return matchedByTitle.id;
+    if (matched) return matched.id;
+
+    // Se não achou na seção específica, busca em todas as colunas do quadro
+    const matchedAny = columns.find((c) => {
+      const titleClean = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      return titleClean.includes(destClean) || destClean.includes(titleClean);
+    });
+
+    if (matchedAny) return matchedAny.id;
   }
 
-  // Fallback padrão se não encontrar nas colunas passadas
-  if (d.includes('ZARATE')) return 'zarate';
-  if (d.includes('BUENOS AIRES') || d.includes('BS AS') || d.includes('CABA')) return 'buenos-aires';
-  if (d.includes('CORDOBA')) return 'cordoba';
-  if (d.includes('ROSARIO')) return 'rosario';
-  if (d.includes('PILAR')) return 'pilar';
-  if (d.includes('SANTIAGO')) return 'santiago';
-  if (d.includes('MENDOZA')) return 'mendoza';
   return '';
 }
 
