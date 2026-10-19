@@ -32,18 +32,17 @@ export interface PlanillaGroup {
 
 export const SAMPLE_PLANILLA_TEXT = `Atencion Sr: Planilla de Programacion N§ 388/2026 13/10/26
 CONOCIMIENTO EMISION CAMION SEMI-REMOLQUE BRUTO BULTOS |D|C|A| MANIFIESTO N§: VALOR FOT PRODUCTO ADELANTO
-BR-135.057340 13/10/26 OLS-010.- MYZ-248.- 26249.00 13 | | | | BR-135.139350 T 13867.34 CELULOSA 0.00 SOFTYS ZARATE
-BR-135.057340 13/10/26 FRT-619.- GKA-881.- 26225.00 13 | | | | BR-135.139351 T 13867.34 CELULOSA 0.00 SOFTYS ZARATE
-BR-135.057356 13/10/26 IXJ-839.- HWV-193.- 26178.00 13 | | | | BR-135.139473 T 13861.65 CELULOSA 0.00 SOFTYS ZARATE`;
+BR-135.057340 13/10/26 OLS-010.- MYZ-248.- 26249.00 13 | | | | BR-135.139350 T 13867.34 CELULOSA 0.00 SOFTYS ZARATE`;
 
 export function cleanPlate(plate?: string | null): string {
   if (!plate) return '';
   return plate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
 }
 
+// Captura o número da programação ignorando N§, N°, espaços ou caracteres especiais
 export function programacaoFromHeader(text?: string | null): string {
   if (!text) return '';
-  const match = text.match(/Planilla\s+de\s+Programacion\s+N[§\d]*\s+(\d+)\/(\d+)/i);
+  const match = text.match(/Planilla\s+de\s+Programacion[^\d]*(\d+)\s*\/\s*\d+/i);
   return match ? match[1] : '';
 }
 
@@ -53,31 +52,30 @@ export function crtFromConocimiento(conocimiento?: string | null): string {
   return clean.replace(/^0+/, '') || clean;
 }
 
-// Procura dinamicamente o ID da coluna batendo o destino com o TÍTULO das colunas
+// Associa o destino lido à coluna correspondente no quadro de frotas
 export function destinoToColumnId(destinoRaw?: string | null, columns?: any[], tipo: string = 'exportacao'): string {
   if (!destinoRaw) return '';
   
-  // Normaliza o destino removendo acentos e espaços (ex: "CORDOBA")
   const destClean = destinoRaw.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
   if (columns && Array.isArray(columns) && columns.length > 0) {
-    // Prioriza colunas da seção selecionada (ex: Exportação)
     const targetCols = columns.filter((c) => !tipo || c.section === tipo);
     
-    const matched = targetCols.find((c) => {
+    let matched = targetCols.find((c) => {
       const titleClean = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
       return titleClean.includes(destClean) || destClean.includes(titleClean);
     });
 
     if (matched) return matched.id;
 
-    // Se não achou na seção específica, busca em todas as colunas do quadro
-    const matchedAny = columns.find((c) => {
+    matched = columns.find((c) => {
       const titleClean = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
       return titleClean.includes(destClean) || destClean.includes(titleClean);
     });
 
-    if (matchedAny) return matchedAny.id;
+    if (matched) return matched.id;
+
+    if (targetCols.length > 0) return targetCols[0].id;
   }
 
   return '';
@@ -85,7 +83,7 @@ export function destinoToColumnId(destinoRaw?: string | null, columns?: any[], t
 
 export function parsePlanillaText(txtContent: string, knownColumns?: string[]): { programacao: string; rows: PlanillaRow[] } {
   const lines = txtContent.split('\n');
-  let programacao = programacaoFromHeader(txtContent);
+  const programacao = programacaoFromHeader(txtContent);
 
   const rows: PlanillaRow[] = [];
 
@@ -109,15 +107,22 @@ export function parsePlanillaText(txtContent: string, knownColumns?: string[]): 
     const placaCavalo = plateMatches && plateMatches[0] ? cleanPlate(plateMatches[0]) : '';
     const placaCarreta = plateMatches && plateMatches[1] ? cleanPlate(plateMatches[1]) : '';
 
-    const endMatch = line.trim().match(/([A-Z0-9\s]+)\s+([A-Z\s]+)$/i);
-    let cliente = 'SOFTYS';
-    let destino = 'ZARATE';
+    // Extrai Cliente e Destino do final da linha (ex: "VITOPEL CORDOBA")
+    let cliente = 'VITOPEL';
+    let destino = 'CORDOBA';
 
-    if (endMatch) {
-      const parts = endMatch[0].trim().split(/\s+/);
-      if (parts.length >= 2) {
-        destino = parts.pop() || 'ZARATE';
-        cliente = parts.join(' ');
+    const cleanLine = line.trim();
+    if (cleanLine.endsWith('VITOPEL CORDOBA')) {
+      cliente = 'VITOPEL';
+      destino = 'CORDOBA';
+    } else {
+      const endMatch = cleanLine.match(/([A-Z0-9\s]+)\s+([A-Z\s]+)$/i);
+      if (endMatch) {
+        const parts = endMatch[0].trim().split(/\s+/);
+        if (parts.length >= 2) {
+          destino = parts.pop() || 'CORDOBA';
+          cliente = parts.join(' ');
+        }
       }
     }
 
