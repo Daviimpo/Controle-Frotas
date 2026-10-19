@@ -2,6 +2,8 @@
 
 Painel de **Programação e Controle de Frotas** (64 veículos no Mercosul) — Next.js 14 (App Router) + Tailwind CSS + Lucide.
 
+> **Atualizando o repositório com um zip novo?** Siga o [ESTRUTURA.md](ESTRUTURA.md). Nunca envie os arquivos soltos: use `node scripts/sincronizar-repo.mjs <repo>`.
+
 ## Como rodar
 
 ```bash

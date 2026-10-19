@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "verificar": "node scripts/verificar-estrutura.mjs",
+    "prebuild": "node scripts/verificar-estrutura.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
