@@ -100,7 +100,6 @@ export default function ImportarPdfPage() {
 
     setRows(
       data.rows.map((r, i) => {
-        // Tenta associar automaticamente a coluna caso não venha definida
         const autoColumn = r.columnId || (state ? destinoToColumnId(r.destino, state.columns, currentTipo) : '');
         return {
           key: `r${i}`,
@@ -200,7 +199,6 @@ export default function ImportarPdfPage() {
   }
 
   const vehiclesSorted = [...state.vehicles].sort((a, b) => a.frota.localeCompare(b.frota, 'pt-BR', { numeric: true }));
-  const targetColumns = state.columns.filter((c) => c.section === tipo);
 
   return (
     <div className="space-y-5">
@@ -365,11 +363,11 @@ export default function ImportarPdfPage() {
                         <td className="px-3 py-2.5">
                           <Select className={cn('h-8 w-40 text-xs', !r.columnId && 'border-amber-300 bg-amber-50')} value={r.columnId} onChange={(e) => update(r.key, { columnId: e.target.value })}>
                             <option value="">Selecione…</option>
-                            {targetColumns
+                            {state.columns
                               .filter((c) => c.id !== SEM_PROGRAMACAO)
                               .map((c) => (
                                 <option key={c.id} value={c.id}>
-                                  {c.title}
+                                  {c.title} ({c.section === 'exportacao' ? 'Exp' : 'Imp'})
                                 </option>
                               ))}
                           </Select>
