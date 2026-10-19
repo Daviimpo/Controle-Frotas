@@ -99,12 +99,13 @@ export default function ImportarPdfPage() {
     const currentTipo: Tipo = 'exportacao';
     setTipo(currentTipo);
 
-    // Encontra uma coluna padrão válida para alocação no quadro
-    const defaultColumn = state?.columns.find((c) => c.section === currentTipo && c.id !== SEM_PROGRAMACAO)?.id || state?.columns[0]?.id || 'zarate';
+    // Seleciona uma coluna real do quadro (prioriza Exportação)
+    const validColumns = state?.columns.filter((c) => c.section === currentTipo && c.id !== SEM_PROGRAMACAO) || [];
+    const fallbackColId = validColumns[0]?.id || state?.columns[0]?.id || '';
 
     setRows(
       data.rows.map((r, i) => {
-        const matchedColId = destinoToColumnId(r.destino, state?.columns || [], currentTipo) || defaultColumn;
+        const matchedColId = destinoToColumnId(r.destino, state?.columns || [], currentTipo) || fallbackColId;
         const cli = String(r.cliente ?? 'VITOPEL');
         const dest = String(r.destino ?? 'CORDOBA');
         return {
@@ -130,12 +131,13 @@ export default function ImportarPdfPage() {
   function changeTipo(t: Tipo) {
     if (!state) return;
     setTipo(t);
-    setRows((rs) => rs.map((r) => ({ ...r, columnId: destinoToColumnId(r.destino, state.columns, t) || state.columns[0]?.id })));
+    const validCols = state.columns.filter((c) => c.section === t && c.id !== SEM_PROGRAMACAO);
+    const fallback = validCols[0]?.id || state.columns[0]?.id || '';
+    setRows((rs) => rs.map((r) => ({ ...r, columnId: destinoToColumnId(r.destino, state.columns, t) || fallback })));
   }
 
   const update = (key: string, patch: Partial<ReviewRow>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
-  // A linha pronta precisa ter include=true, vehicleId (frota associada) e columnId
   const ready = rows.filter((r) => r.include && r.vehicleId && r.columnId);
 
   const blocks = useMemo(() => {
