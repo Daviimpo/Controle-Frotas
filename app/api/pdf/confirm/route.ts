@@ -1,6 +1,7 @@
 import { readState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
 import { getSupabase } from '@/lib/server/supabase';
+import { DEFAULT_COLUMNS } from '@/lib/mock-data';
 import type { Group, Macro } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -25,10 +26,28 @@ export async function POST(req: Request) {
 
     const sb = getSupabase();
 
-    // 1. Busca as colunas reais cadastradas diretamente na tabela do Supabase
-    const { data: dbColumns, error: colError } = await sb.from('quadro_colunas').select('*').order('ordem');
-    if (colError || !dbColumns || dbColumns.length === 0) {
-      return errorResponse('Nenhuma coluna cadastrada na tabela quadro_colunas do banco.', 400);
+    // 1. Busca as colunas reais cadastradas na tabela do Supabase
+    let { data: dbColumns } = await sb.from('quadro_colunas').select('*').order('ordem');
+
+    // Se a tabela quadro_colunas estiver vazia no Supabase, insere as colunas padrão automaticamente
+    if (!dbColumns || dbColumns.length === 0) {
+      const defaultRows = DEFAULT_COLUMNS.map((c, i) => ({
+        id: c.id,
+        titulo: c.title,
+        secao: c.section,
+        subtitulo: c.subtitle ?? null,
+        pais: c.country ?? null,
+        ordem: i,
+      }));
+
+      const { error: insertColErr } = await sb.from('quadro_colunas').upsert(defaultRows, { onConflict: 'id' });
+      if (insertColErr) {
+        return errorResponse(`Erro ao inicializar quadro_colunas: ${insertColErr.message}`, 500);
+      }
+
+      // Rebusca as colunas recém-criadas
+      const { data: reloadedCols } = await sb.from('quadro_colunas').select('*').order('ordem');
+      dbColumns = reloadedCols || defaultRows;
     }
 
     // 2. Lê o estado atual
@@ -101,7 +120,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Salva na tabela quadro_frotas usando os IDs reais válidos
+    // 3. Salva na tabela quadro_frotas
     const blocosRows = state.groups.map((g, i) => ({
       id: g.id,
       column_id: g.columnId,
