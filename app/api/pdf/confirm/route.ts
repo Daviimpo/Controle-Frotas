@@ -1,4 +1,4 @@
-import { mutateState } from '@/lib/server/storage';
+import { updateState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
 import type { Macro } from '@/lib/types';
 
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     let frotasAlocadas = 0;
     const blocosCriados = new Set<string>();
 
-    const updatedState = await mutateState((state) => {
+    const updatedState = await updateState((state) => {
       // 1. Identifica colunas válidas de Exportação no quadro
       const exportColumns = state.columns.filter((c) => c.section === 'exportacao');
       const fallbackColumn = exportColumns[0] || state.columns[0];
