@@ -99,9 +99,12 @@ export default function ImportarPdfPage() {
     const currentTipo: Tipo = 'exportacao';
     setTipo(currentTipo);
 
+    // Encontra uma coluna padrão válida para alocação no quadro
+    const defaultColumn = state?.columns.find((c) => c.section === currentTipo && c.id !== SEM_PROGRAMACAO)?.id || state?.columns[0]?.id || 'zarate';
+
     setRows(
       data.rows.map((r, i) => {
-        const matchedColId = destinoToColumnId(r.destino, state?.columns || [], currentTipo);
+        const matchedColId = destinoToColumnId(r.destino, state?.columns || [], currentTipo) || defaultColumn;
         const cli = String(r.cliente ?? 'VITOPEL');
         const dest = String(r.destino ?? 'CORDOBA');
         return {
@@ -127,17 +130,19 @@ export default function ImportarPdfPage() {
   function changeTipo(t: Tipo) {
     if (!state) return;
     setTipo(t);
-    setRows((rs) => rs.map((r) => ({ ...r, columnId: destinoToColumnId(r.destino, state.columns, t) })));
+    setRows((rs) => rs.map((r) => ({ ...r, columnId: destinoToColumnId(r.destino, state.columns, t) || state.columns[0]?.id })));
   }
 
   const update = (key: string, patch: Partial<ReviewRow>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
+  // A linha pronta precisa ter include=true, vehicleId (frota associada) e columnId
   const ready = rows.filter((r) => r.include && r.vehicleId && r.columnId);
+
   const blocks = useMemo(() => {
     const map = new Map<string, { columnId: string; programacao: string; crt: string; cliente: string; frotas: string[] }>();
     for (const r of ready) {
       const k = `${r.programacao}|${r.crt}`;
-      const b = map.get(k) ?? { columnId: r.columnId, programacao: r.programacao, crt: r.crt, cliente: r.cliente, frotas: [] };
+      const b = map.get(k) ?? { columnId: r.columnId, programacao: r.programacao, crt: r.crt, cliente: r.clienteDestino, frotas: [] };
       if (!b.frotas.includes(r.vehicleId)) b.frotas.push(r.vehicleId);
       map.set(k, b);
     }
@@ -151,7 +156,7 @@ export default function ImportarPdfPage() {
         method: 'POST',
         body: {
           macro,
-          allocations: ready.map((x) => ({ vehicleId: x.vehicleId, columnId: x.columnId, programacao: x.programacao, crt: x.crt, cliente: x.cliente })),
+          allocations: ready.map((x) => ({ vehicleId: x.vehicleId, columnId: x.columnId, programacao: x.programacao, crt: x.crt, cliente: x.clienteDestino })),
         },
       });
       setSummary({ frotas: r.frotas, blocos: r.blocos });
