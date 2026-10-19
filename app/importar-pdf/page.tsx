@@ -95,23 +95,29 @@ export default function ImportarPdfPage() {
 
   function buildReview(data: ExtractionResult) {
     setResult(data);
-    setTipo(data.tipo === 'importacao' ? 'importacao' : 'exportacao');
+    const currentTipo = data.tipo === 'importacao' ? 'importacao' : 'exportacao';
+    setTipo(currentTipo);
+
     setRows(
-      data.rows.map((r, i) => ({
-        key: `r${i}`,
-        include: !!r.vehicleId,
-        placaCavalo: r.placaCavalo,
-        placaCarreta: String(r.placaCarreta ?? ''),
-        motorista: String(r.motorista ?? ''),
-        vehicleId: r.vehicleId ?? '',
-        matchedBy: r.matchedBy ?? null,
-        crtOriginal: String(r.conocimiento ?? ''),
-        crt: String(r.crt ?? ''),
-        programacao: String(r.programacao ?? data.programacao ?? ''),
-        destino: String(r.destino ?? ''),
-        columnId: r.columnId ?? '',
-        cliente: String(r.cliente ?? ''),
-      })),
+      data.rows.map((r, i) => {
+        // Tenta associar automaticamente a coluna caso não venha definida
+        const autoColumn = r.columnId || (state ? destinoToColumnId(r.destino, state.columns, currentTipo) : '');
+        return {
+          key: `r${i}`,
+          include: !!r.vehicleId,
+          placaCavalo: r.placaCavalo,
+          placaCarreta: String(r.placaCarreta ?? ''),
+          motorista: String(r.motorista ?? ''),
+          vehicleId: r.vehicleId ?? '',
+          matchedBy: r.matchedBy ?? null,
+          crtOriginal: String(r.conocimiento ?? ''),
+          crt: String(r.crt ?? ''),
+          programacao: String(r.programacao ?? data.programacao ?? ''),
+          destino: String(r.destino ?? ''),
+          columnId: autoColumn,
+          cliente: String(r.cliente ?? ''),
+        };
+      }),
     );
   }
 
@@ -353,7 +359,7 @@ export default function ImportarPdfPage() {
                         <td className="px-3 py-2.5">
                           <Input className="h-8 w-24 text-xs font-semibold" value={r.crt} onChange={(e) => update(r.key, { crt: e.target.value })} />
                           <div className="mt-1 max-w-[140px] truncate font-mono text-[10.5px] text-slate-400" title={r.crtOriginal}>
-                            Origem: {r.crtOriginal || '—'}
+                            CRT: {r.crtOriginal || '—'}
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
@@ -367,7 +373,7 @@ export default function ImportarPdfPage() {
                                 </option>
                               ))}
                           </Select>
-                          <div className="mt-1 text-[10.5px] text-slate-400">Origem: {r.destino || '—'}</div>
+                          {r.destino && <div className="mt-1 text-[10.5px] text-slate-400">{r.destino}</div>}
                         </td>
                         <td className="px-3 py-2.5">
                           <Input className="h-8 w-44 text-xs" value={r.cliente} onChange={(e) => update(r.key, { cliente: e.target.value })} />
