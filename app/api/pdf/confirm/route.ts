@@ -1,5 +1,6 @@
 import { getStore, readState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
+import { DEFAULT_COLUMNS } from '@/lib/mock-data';
 import type { Group, Macro } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -22,24 +23,37 @@ export async function POST(req: Request) {
       return errorResponse('Nenhuma alocação informada.', 400);
     }
 
-    // 1. Lê o estado atual do banco (Supabase / Store)
+    // 1. Lê o estado atual
     const state = await readState();
     const macro = body.macro || 'viagem';
 
+    // 2. Se a tabela de colunas estiver vazia no banco, inicializa com as colunas padrão
     if (!state.columns || state.columns.length === 0) {
-      return errorResponse('Nenhuma coluna cadastrada no quadro.', 400);
+      state.columns = [...DEFAULT_COLUMNS];
     }
 
-    const exportColumns = state.columns.filter((c) => c.section === 'exportacao');
-    const fallbackColumn = exportColumns[0] || state.columns[0];
+    let exportColumns = state.columns.filter((c) => c.section === 'exportacao');
+    
+    if (exportColumns.length === 0) {
+      exportColumns = [
+        {
+          id: 'cordoba',
+          title: 'CÓRDOBA',
+          section: 'exportacao',
+          country: 'ARG',
+        },
+      ];
+      state.columns.push(...exportColumns);
+    }
 
+    const fallbackColumn = exportColumns[0];
     let frotasAlocadas = 0;
     const blocosCriados = new Set<string>();
 
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // 2. Determina a coluna de destino
+      // 3. Determina a coluna de destino
       let targetCol = state.columns.find((c) => c.id === alloc.columnId);
 
       if (!targetCol && alloc.columnId) {
@@ -54,7 +68,8 @@ export async function POST(req: Request) {
         targetCol = fallbackColumn;
       }
 
-      // 3. Remove a frota de qualquer outro bloco no quadro antes de reatribuir
+      // 4. Remove a frota de qualquer outro bloco no quadro antes de reatribuir
+      if (!state.groups) state.groups = [];
       for (const group of state.groups) {
         group.frotaIds = group.frotaIds.filter((id) => id !== alloc.vehicleId);
       }
@@ -62,7 +77,7 @@ export async function POST(req: Request) {
       // Remove blocos que ficaram sem frotas
       state.groups = state.groups.filter((g) => g.frotaIds.length > 0);
 
-      // 4. Localiza ou cria o bloco de Programação / CRT na coluna de destino
+      // 5. Localiza ou cria o bloco de Programação / CRT na coluna de destino
       let targetGroup = state.groups.find(
         (g) => g.columnId === targetCol!.id && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
       );
@@ -87,7 +102,7 @@ export async function POST(req: Request) {
 
       blocosCriados.add(`${targetCol.id}_${alloc.programacao}_${alloc.crt}`);
 
-      // 5. Atualiza a macro da frota no estado
+      // 6. Atualiza a macro da frota no estado
       const vehicle = state.vehicles.find((v) => v.id === alloc.vehicleId);
       if (vehicle) {
         vehicle.macro = macro;
@@ -95,7 +110,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 6. Grava permanentemente através da Store do sistema (Supabase)
+    // 7. Salva permanentemente no Supabase via Store
     const savedState = await getStore().saveBoard(state, 'importacao_pdf');
 
     return json({
