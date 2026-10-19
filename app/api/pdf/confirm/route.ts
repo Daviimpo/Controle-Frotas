@@ -26,17 +26,16 @@ export async function POST(req: Request) {
 
     const sb = getSupabase();
 
-    // 1. Busca as colunas reais cadastradas na tabela do Supabase
+    // 1. Busca as colunas na tabela do Supabase
     let { data: dbColumns } = await sb.from('quadro_colunas').select('*').order('ordem');
 
-    // Se a tabela quadro_colunas estiver vazia no Supabase, insere as colunas padrão automaticamente
+    // Se estiver vazia, insere as colunas padrão enviando apenas o esquema base (sem campos incompatíveis)
     if (!dbColumns || dbColumns.length === 0) {
       const defaultRows = DEFAULT_COLUMNS.map((c, i) => ({
         id: c.id,
         titulo: c.title,
         secao: c.section,
         subtitulo: c.subtitle ?? null,
-        pais: c.country ?? null,
         ordem: i,
       }));
 
@@ -45,16 +44,14 @@ export async function POST(req: Request) {
         return errorResponse(`Erro ao inicializar quadro_colunas: ${insertColErr.message}`, 500);
       }
 
-      // Rebusca as colunas recém-criadas
       const { data: reloadedCols } = await sb.from('quadro_colunas').select('*').order('ordem');
       dbColumns = reloadedCols || defaultRows;
     }
 
-    // 2. Lê o estado atual
+    // 2. Lê o estado
     const state = await readState();
     const macro = body.macro || 'viagem';
 
-    // Identifica as colunas de exportação
     const exportColumns = dbColumns.filter((c: any) => c.secao === 'exportacao');
     const fallbackColumn = exportColumns[0] || dbColumns[0];
 
@@ -64,7 +61,6 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // Busca a coluna cadastrada no Supabase correspondente ao ID ou Nome
       let targetDbCol = dbColumns.find((c: any) => c.id === alloc.columnId);
 
       if (!targetDbCol && alloc.columnId) {
@@ -75,19 +71,15 @@ export async function POST(req: Request) {
         });
       }
 
-      // Usa o ID real existente na tabela 'quadro_colunas'
       const realColumnId = targetDbCol?.id || fallbackColumn.id;
 
-      // Remove a frota de alocações anteriores no quadro
       if (!state.groups) state.groups = [];
       for (const group of state.groups) {
         group.frotaIds = group.frotaIds.filter((id) => id !== alloc.vehicleId);
       }
 
-      // Limpa blocos vazios
       state.groups = state.groups.filter((g) => g.frotaIds.length > 0);
 
-      // Localiza ou cria o bloco com a chave de coluna válida
       let targetGroup = state.groups.find(
         (g) => g.columnId === realColumnId && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
       );
@@ -112,7 +104,6 @@ export async function POST(req: Request) {
 
       blocosCriados.add(`${realColumnId}_${alloc.programacao}_${alloc.crt}`);
 
-      // Atualiza a macro da frota
       const vehicle = state.vehicles.find((v) => v.id === alloc.vehicleId);
       if (vehicle) {
         vehicle.macro = macro;
@@ -120,7 +111,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Salva na tabela quadro_frotas
+    // 3. Grava frotas na tabela
     const blocosRows = state.groups.map((g, i) => ({
       id: g.id,
       column_id: g.columnId,
