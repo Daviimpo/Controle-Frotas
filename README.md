@@ -69,7 +69,7 @@ lib/
 
 **Persistência (Supabase):**
 
-1. No SQL Editor do Supabase, rode `supabase/migrations/0001_controle_frotas.sql`. Ele cria `frotas`, `quadro_frotas` (blocos Programação/CRT com `frota_ids`), `quadro_colunas`, `quadro_meta` e um trigger que tira a frota excluída dos blocos. O script pode ser rodado mais de uma vez.
+1. No SQL Editor do Supabase, rode `supabase/migrations/0001_controle_frotas.sql` depois `0002_corrigir_schema_existente.sql` e `0003_layout_planilha.sql` (a 0002 corrige tabelas que já existiam com outras colunas e recarrega o schema cache). Ele cria `frotas`, `quadro_frotas` (blocos Programação/CRT com `frota_ids`), `quadro_colunas`, `quadro_meta` e um trigger que tira a frota excluída dos blocos. O script pode ser rodado mais de uma vez.
 2. Em `.env.local` (e nas variáveis do Vercel) defina `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. A chave é usada só no servidor, nunca com `NEXT_PUBLIC_`.
 3. Opcional: `SEED_MOCK_DATA=true` cria as 64 frotas de exemplo **uma única vez**, só se a tabela `frotas` estiver vazia na primeira execução.
 
