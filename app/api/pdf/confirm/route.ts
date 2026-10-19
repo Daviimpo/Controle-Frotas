@@ -1,4 +1,4 @@
-import { readState, writeState } from '@/lib/server/storage';
+import { readState, saveState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
 import type { Macro } from '@/lib/types';
 
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
     }
 
     state.updatedAt = new Date().toISOString();
-    await writeState(state);
+    await saveState(state);
 
     return json({
       success: true,
