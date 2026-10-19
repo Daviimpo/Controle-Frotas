@@ -95,12 +95,13 @@ export default function ImportarPdfPage() {
 
   function buildReview(data: ExtractionResult) {
     setResult(data);
-    const currentTipo = data.tipo === 'importacao' ? 'importacao' : 'exportacao';
+    // Programações da Argentina são tratadas como Exportação por padrão
+    const currentTipo: Tipo = 'exportacao';
     setTipo(currentTipo);
 
     setRows(
       data.rows.map((r, i) => {
-        const autoColumn = r.columnId || (state ? destinoToColumnId(r.destino, state.columns, currentTipo) : '');
+        const matchedColId = destinoToColumnId(r.destino, state?.columns || [], currentTipo);
         return {
           key: `r${i}`,
           include: !!r.vehicleId,
@@ -113,7 +114,7 @@ export default function ImportarPdfPage() {
           crt: String(r.crt ?? ''),
           programacao: String(r.programacao ?? data.programacao ?? ''),
           destino: String(r.destino ?? ''),
-          columnId: autoColumn,
+          columnId: matchedColId,
           cliente: String(r.cliente ?? ''),
         };
       }),
@@ -367,7 +368,7 @@ export default function ImportarPdfPage() {
                               .filter((c) => c.id !== SEM_PROGRAMACAO)
                               .map((c) => (
                                 <option key={c.id} value={c.id}>
-                                  {c.title} ({c.section === 'exportacao' ? 'Exp' : 'Imp'})
+                                  {c.title}
                                 </option>
                               ))}
                           </Select>
