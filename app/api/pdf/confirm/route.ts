@@ -1,7 +1,7 @@
 import { getStore, readState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
 import { DEFAULT_COLUMNS } from '@/lib/mock-data';
-import type { Group, Macro } from '@/lib/types';
+import type { Column, Group, Macro } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
@@ -33,17 +33,16 @@ export async function POST(req: Request) {
     }
 
     let exportColumns = state.columns.filter((c) => c.section === 'exportacao');
-    
+
     if (exportColumns.length === 0) {
-      exportColumns = [
-        {
-          id: 'cordoba',
-          title: 'CÓRDOBA',
-          section: 'exportacao',
-          country: 'ARG',
-        },
-      ];
-      state.columns.push(...exportColumns);
+      const newExportCol: Column = {
+        id: 'cordoba',
+        title: 'CÓRDOBA',
+        section: 'exportacao',
+        country: 'AR',
+      };
+      exportColumns = [newExportCol];
+      state.columns.push(newExportCol);
     }
 
     const fallbackColumn = exportColumns[0];
