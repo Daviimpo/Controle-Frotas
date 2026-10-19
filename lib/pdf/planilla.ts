@@ -8,6 +8,7 @@ export interface PlanillaRow {
   placaCarreta?: string;
   cliente?: string;
   destino?: string;
+  clienteDestino?: string;
   frotaEncontrada?: string;
   matchedBy?: 'cavalo' | 'carreta';
   columnId?: string;
@@ -39,7 +40,6 @@ export function cleanPlate(plate?: string | null): string {
   return plate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
 }
 
-// Captura o número da programação ignorando N§, N°, espaços ou caracteres especiais
 export function programacaoFromHeader(text?: string | null): string {
   if (!text) return '';
   const match = text.match(/Planilla\s+de\s+Programacion[^\d]*(\d+)\s*\/\s*\d+/i);
@@ -52,33 +52,23 @@ export function crtFromConocimiento(conocimiento?: string | null): string {
   return clean.replace(/^0+/, '') || clean;
 }
 
-// Associa o destino lido à coluna correspondente no quadro de frotas
 export function destinoToColumnId(destinoRaw?: string | null, columns?: any[], tipo: string = 'exportacao'): string {
-  if (!destinoRaw) return '';
+  if (!columns || !Array.isArray(columns) || columns.length === 0) return '';
   
-  const destClean = destinoRaw.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const targetCols = columns.filter((c) => !tipo || c.section === tipo);
+  if (targetCols.length === 0) return columns[0]?.id || '';
 
-  if (columns && Array.isArray(columns) && columns.length > 0) {
-    const targetCols = columns.filter((c) => !tipo || c.section === tipo);
-    
-    let matched = targetCols.find((c) => {
+  if (destinoRaw) {
+    const destClean = destinoRaw.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const matched = targetCols.find((c) => {
       const titleClean = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
       return titleClean.includes(destClean) || destClean.includes(titleClean);
     });
-
     if (matched) return matched.id;
-
-    matched = columns.find((c) => {
-      const titleClean = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-      return titleClean.includes(destClean) || destClean.includes(titleClean);
-    });
-
-    if (matched) return matched.id;
-
-    if (targetCols.length > 0) return targetCols[0].id;
   }
 
-  return '';
+  // Retorna a primeira coluna válida de exportação por padrão para garantir a alocação
+  return targetCols[0].id;
 }
 
 export function parsePlanillaText(txtContent: string, knownColumns?: string[]): { programacao: string; rows: PlanillaRow[] } {
@@ -107,7 +97,6 @@ export function parsePlanillaText(txtContent: string, knownColumns?: string[]): 
     const placaCavalo = plateMatches && plateMatches[0] ? cleanPlate(plateMatches[0]) : '';
     const placaCarreta = plateMatches && plateMatches[1] ? cleanPlate(plateMatches[1]) : '';
 
-    // Extrai Cliente e Destino do final da linha (ex: "VITOPEL CORDOBA")
     let cliente = 'VITOPEL';
     let destino = 'CORDOBA';
 
@@ -134,6 +123,7 @@ export function parsePlanillaText(txtContent: string, knownColumns?: string[]): 
       placaCarreta,
       cliente,
       destino,
+      clienteDestino: `${cliente} / ${destino}`,
       conocimiento: conocimientoOriginal,
       camion: placaCavalo,
       semiRemolque: placaCarreta,
