@@ -1,5 +1,6 @@
 import { getStore, readState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
+import { DEFAULT_COLUMNS } from '@/lib/mock-data';
 import type { Group, Macro } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -22,13 +23,13 @@ export async function POST(req: Request) {
       return errorResponse('Nenhuma alocação informada.', 400);
     }
 
-    // 1. Lê o estado completo do quadro
+    // 1. Lê o estado atual do quadro
     const state = await readState();
     const macro = body.macro || 'viagem';
 
-    // Garante que existem colunas no estado
+    // 2. Se o banco não retornar colunas, inicializa com as colunas padrão
     if (!state.columns || state.columns.length === 0) {
-      return errorResponse('Nenhuma coluna disponível no quadro de frotas.', 400);
+      state.columns = [...DEFAULT_COLUMNS];
     }
 
     const exportColumns = state.columns.filter((c) => c.section === 'exportacao');
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // 2. Busca a coluna de destino no estado por ID ou título
+      // 3. Localiza a coluna de destino por ID ou título
       let targetCol = state.columns.find((c) => c.id === alloc.columnId);
 
       if (!targetCol && alloc.columnId) {
@@ -53,16 +54,16 @@ export async function POST(req: Request) {
 
       const finalColumnId = targetCol?.id || fallbackColumn.id;
 
-      // 3. Remove a frota de qualquer outro bloco no quadro antes de reatribuir
+      // 4. Remove a frota de alocações anteriores no quadro
       if (!state.groups) state.groups = [];
       for (const group of state.groups) {
         group.frotaIds = group.frotaIds.filter((id) => id !== alloc.vehicleId);
       }
 
-      // Limpa blocos que ficaram sem frotas
+      // Limpa blocos que ficaram vazios
       state.groups = state.groups.filter((g) => g.frotaIds.length > 0);
 
-      // 4. Localiza ou cria o bloco de Programação / CRT na coluna de destino
+      // 5. Localiza ou cria o bloco de Programação / CRT
       let targetGroup = state.groups.find(
         (g) => g.columnId === finalColumnId && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
       );
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
 
       blocosCriados.add(`${finalColumnId}_${alloc.programacao}_${alloc.crt}`);
 
-      // 5. Atualiza a macro da frota
+      // 6. Atualiza a macro da frota
       const vehicle = state.vehicles.find((v) => v.id === alloc.vehicleId);
       if (vehicle) {
         vehicle.macro = macro;
@@ -95,7 +96,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 6. Salva utilizando a função oficial do sistema (saveBoard)
+    // 7. Salva o quadro completo via Store oficial (populando colunas, blocos e frotas no Supabase)
     const savedState = await getStore().saveBoard(state, 'importacao_pdf');
 
     return json({
