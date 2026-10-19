@@ -1,5 +1,6 @@
-import { getStore, readState } from '@/lib/server/storage';
+import { readState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
+import { getSupabase } from '@/lib/server/supabase';
 import type { Group, Macro } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -22,11 +23,10 @@ export async function POST(req: Request) {
       return errorResponse('Nenhuma alocação informada.', 400);
     }
 
-    // 1. Lê o estado atual através da store oficial do sistema
+    // 1. Lê o estado atual
     const state = await readState();
     const macro = body.macro || 'viagem';
 
-    // Seleciona a coluna de destino ou a primeira disponível
     const exportColumns = state.columns?.filter((c) => c.section === 'exportacao') || [];
     const fallbackColumn = exportColumns[0] || state.columns?.[0];
 
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // 2. Localiza a coluna correspondente no quadro
+      // 2. Determina a coluna no quadro
       let targetCol = state.columns?.find((c) => c.id === alloc.columnId);
 
       if (!targetCol && alloc.columnId) {
@@ -91,14 +91,49 @@ export async function POST(req: Request) {
       }
     }
 
-    // 6. Salva permanentemente utilizando os conversores internos de toBlocoRow/fromBlocoRow
-    const savedState = await getStore().saveBoard(state, 'importacao_pdf');
+    // 6. Grava diretamente no Supabase mapeando o nome exato da coluna 'column_id'
+    const sb = getSupabase();
+
+    const blocosRows = state.groups.map((g, i) => ({
+      id: g.id,
+      column_id: g.columnId, // Mapeado para column_id em inglês conforme tabela do banco
+      rotulo: g.label ?? null,
+      programacao: g.programacao ?? null,
+      crt: g.crt ?? null,
+      cliente: g.cliente ?? null,
+      frota_ids: g.frotaIds,
+      ordem: i,
+      created_at: g.createdAt,
+    }));
+
+    if (blocosRows.length) {
+      const { error: errBlocos } = await sb.from('quadro_frotas').upsert(blocosRows);
+      if (errBlocos) throw new Error(`Erro ao salvar frotas no quadro: ${errBlocos.message}`);
+    }
+
+    const frotasRows = state.vehicles.map((v) => ({
+      id: v.id,
+      frota: v.frota,
+      placa_cavalo: v.placaCavalo ?? '',
+      placa_carreta: v.placaCarreta ?? '',
+      motorista: v.motorista ?? '',
+      macro: v.macro,
+      macro_updated_at: v.macroUpdatedAt,
+      updated_at: new Date().toISOString(),
+    }));
+
+    if (frotasRows.length) {
+      const { error: errFrotas } = await sb.from('frotas').upsert(frotasRows);
+      if (errFrotas) throw new Error(`Erro ao atualizar frotas: ${errFrotas.message}`);
+    }
+
+    await sb.from('quadro_meta').upsert({ id: 1, version: Date.now(), updated_at: new Date().toISOString(), updated_by: 'importacao_pdf' });
 
     return json({
       success: true,
       frotas: frotasAlocadas,
       blocos: blocosCriados.size,
-      state: savedState,
+      state,
     });
   } catch (err) {
     return errorResponse(
