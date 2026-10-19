@@ -47,8 +47,8 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // 2. Busca a coluna exata pelo ID ou pelo Título (ex: CORDOBA). Se não achar, usa a primeira de Exportação.
-      let targetCol = state.columns.find((c: any) => c.id === alloc.columnId);
+      // 2. Busca a coluna exata pelo ID ou pelo Título (ex: CORDOBA)
+      let targetCol: any = state.columns.find((c: any) => c.id === alloc.columnId);
 
       if (!targetCol && alloc.columnId) {
         const cleanSearch = alloc.columnId.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -62,16 +62,21 @@ export async function POST(req: Request) {
         targetCol = fallbackColumn;
       }
 
-      // 3. Remove a frota de qualquer outro lugar no quadro
-      for (const col of state.columns) {
-        for (const grp of col.groups) {
-          grp.frotas = grp.frotas.filter((f: string) => f !== alloc.vehicleId);
+      // 3. Remove a frota de qualquer outro lugar no quadro (procura tanto em groups quanto em items/cards)
+      for (const col of state.columns as any[]) {
+        const list = col.groups || col.items || col.cards || [];
+        for (const grp of list) {
+          if (Array.isArray(grp.frotas)) {
+            grp.frotas = grp.frotas.filter((f: string) => f !== alloc.vehicleId);
+          }
         }
-        col.groups = col.groups.filter((grp: any) => grp.frotas.length > 0);
+        if (col.groups) col.groups = col.groups.filter((grp: any) => grp.frotas?.length > 0);
+        if (col.items) col.items = col.items.filter((grp: any) => grp.frotas?.length > 0);
       }
 
       // 4. Localiza ou cria o bloco de Programação / CRT na coluna de destino
-      let targetGroup = targetCol.groups.find(
+      const targetList = targetCol.groups || targetCol.items || targetCol.cards || [];
+      let targetGroup = targetList.find(
         (g: any) => g.programacao === alloc.programacao && g.crt === alloc.crt
       );
 
@@ -83,7 +88,11 @@ export async function POST(req: Request) {
           cliente: alloc.cliente || 'VITOPEL / CORDOBA',
           frotas: [],
         };
-        targetCol.groups.push(targetGroup);
+        if (targetCol.groups) targetCol.groups.push(targetGroup);
+        else if (targetCol.items) targetCol.items.push(targetGroup);
+        else {
+          targetCol.groups = [targetGroup];
+        }
       }
 
       if (!targetGroup.frotas.includes(alloc.vehicleId)) {
@@ -102,7 +111,7 @@ export async function POST(req: Request) {
 
     state.updatedAt = new Date().toISOString();
 
-    // 6. Grava o estado atualizado diretamente no Supabase
+    // 6. Grava o estado atualizado no Supabase
     const supabase = getSupabaseClient();
     if (supabase) {
       await supabase.from('board_state').upsert({ id: 'main', data: state, updated_at: state.updatedAt });
