@@ -10,7 +10,7 @@ export interface PlanillaRow {
   destino?: string;
   frotaEncontrada?: string;
   matchedBy?: 'cavalo' | 'carreta';
-  // Campos para compatibilidade com pdf-extract.ts
+  columnId?: string;
   conocimiento?: string;
   camion?: string;
   semiRemolque?: string;
@@ -53,8 +53,22 @@ export function crtFromConocimiento(conocimiento?: string | null): string {
   return clean.replace(/^0+/, '') || clean;
 }
 
+// Procura a coluna ideal varrendo as colunas cadastradas no quadro
 export function destinoToColumnId(destinoRaw?: string | null, columns?: any[], tipo?: string): string {
-  const d = (destinoRaw || '').toUpperCase().trim();
+  const d = (destinoRaw || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (!d) return '';
+
+  if (columns && Array.isArray(columns) && columns.length > 0) {
+    // 1. Tenta achar coluna cujo título coincida com o destino (ex: "CORDOBA")
+    const matchedByTitle = columns.find((c) => {
+      const titleClean = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return titleClean.includes(d) || d.includes(titleClean);
+    });
+
+    if (matchedByTitle) return matchedByTitle.id;
+  }
+
+  // Fallback padrão se não encontrar nas colunas passadas
   if (d.includes('ZARATE')) return 'zarate';
   if (d.includes('BUENOS AIRES') || d.includes('BS AS') || d.includes('CABA')) return 'buenos-aires';
   if (d.includes('CORDOBA')) return 'cordoba';
@@ -62,7 +76,7 @@ export function destinoToColumnId(destinoRaw?: string | null, columns?: any[], t
   if (d.includes('PILAR')) return 'pilar';
   if (d.includes('SANTIAGO')) return 'santiago';
   if (d.includes('MENDOZA')) return 'mendoza';
-  return 'zarate';
+  return '';
 }
 
 export function parsePlanillaText(txtContent: string, knownColumns?: string[]): { programacao: string; rows: PlanillaRow[] } {
