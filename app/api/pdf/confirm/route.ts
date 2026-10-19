@@ -1,4 +1,3 @@
-import { readState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
 import { createClient } from '@supabase/supabase-js';
 import type { Macro } from '@/lib/types';
@@ -30,14 +29,35 @@ export async function POST(req: Request) {
       return errorResponse('Nenhuma alocação informada.', 400);
     }
 
-    // 1. Carrega o estado atual usando o leitor padrão do sistema
-    const state = await readState();
-    const macro = body.macro || 'viagem';
-
-    if (!state || !state.columns || !Array.isArray(state.columns) || state.columns.length === 0) {
-      return errorResponse('Nenhuma coluna cadastrada no quadro.', 400);
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return errorResponse('Cliente Supabase não configurado.', 500);
     }
 
+    // 1. Busca o estado real do quadro na tabela board_state
+    const { data: boardRow } = await supabase
+      .from('board_state')
+      .select('data')
+      .limit(1)
+      .maybeSingle();
+
+    let state = boardRow?.data;
+
+    // Se o estado não existir no banco, estrutura um objeto base
+    if (!state) {
+      state = { columns: [], vehicles: [] };
+    }
+
+    // Se não existirem colunas, cria a estrutura padrão de Exportação
+    if (!state.columns || !Array.isArray(state.columns) || state.columns.length === 0) {
+      state.columns = [
+        { id: 'cordoba', title: 'CÓRDOBA', section: 'exportacao', groups: [] },
+        { id: 'zarate', title: 'ZÁRATE', section: 'exportacao', groups: [] },
+        { id: 'rosario', title: 'ROSÁRIO', section: 'exportacao', groups: [] },
+      ];
+    }
+
+    const macro = body.macro || 'viagem';
     const exportColumns = state.columns.filter((c: any) => c.section === 'exportacao');
     const fallbackColumn = exportColumns[0] || state.columns[0];
 
@@ -47,7 +67,7 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // 2. Busca a coluna de destino
+      // 2. Busca a coluna de destino (por ID ou aproximação de nome)
       let targetCol: any = state.columns.find((c: any) => c.id === alloc.columnId);
 
       if (!targetCol && alloc.columnId) {
@@ -62,7 +82,7 @@ export async function POST(req: Request) {
         targetCol = fallbackColumn;
       }
 
-      // 3. Limpa a frota de outras posições
+      // 3. Remove a frota de outras posições no quadro
       for (const col of state.columns as any[]) {
         const list = col.groups || col.items || col.cards || [];
         for (const grp of list) {
@@ -113,10 +133,13 @@ export async function POST(req: Request) {
 
     state.updatedAt = new Date().toISOString();
 
-    // 6. Persiste no Supabase caso configurado
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      await supabase.from('board_state').upsert({ id: 'main', data: state, updated_at: state.updatedAt });
+    // 6. Grava de forma forçada na tabela board_state
+    const { error: saveError } = await supabase
+      .from('board_state')
+      .upsert({ id: 'main', data: state, updated_at: state.updatedAt });
+
+    if (saveError) {
+      return errorResponse(`Erro ao salvar no Supabase: ${saveError.message}`, 500);
     }
 
     return json({
