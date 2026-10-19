@@ -1,6 +1,5 @@
-import { readState } from '@/lib/server/storage';
+import { getStore, readState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
-import { getSupabase } from '@/lib/server/supabase';
 import type { Group, Macro } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -23,15 +22,16 @@ export async function POST(req: Request) {
       return errorResponse('Nenhuma alocação informada.', 400);
     }
 
-    const sb = getSupabase();
-
-    // 1. Lê o estado atual
+    // 1. Lê o estado atual via storage nativo
     const state = await readState();
     const macro = body.macro || 'viagem';
 
-    // 2. Garante que temos uma coluna de destino padrão do estado
-    const exportColumns = state.columns?.filter((c) => c.section === 'exportacao') || [];
-    const fallbackColumn = exportColumns[0] || state.columns?.[0];
+    if (!state.columns || state.columns.length === 0) {
+      return errorResponse('Nenhuma coluna cadastrada no quadro.', 400);
+    }
+
+    const exportColumns = state.columns.filter((c) => c.section === 'exportacao');
+    const fallbackColumn = exportColumns[0] || state.columns[0];
 
     let frotasAlocadas = 0;
     const blocosCriados = new Set<string>();
@@ -39,40 +39,53 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // Localiza a coluna de destino
-      let targetCol = state.columns?.find((c) => c.id === alloc.columnId);
+      // 2. Extrai e valida a coluna/destino de forma inteligente
+      // Separa o destino se vier no formato "CLIENTE / DESTINO" (ex: "VITOPEL / CORDOBA")
+      let searchTarget = alloc.columnId || alloc.cliente || '';
+      if (searchTarget.includes('/')) {
+        const parts = searchTarget.split('/');
+        searchTarget = parts[parts.length - 1].trim();
+      }
 
-      if (!targetCol && alloc.columnId) {
-        const cleanSearch = alloc.columnId.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        targetCol = state.columns?.find((c) => {
+      let targetCol = state.columns.find((c) => c.id === searchTarget);
+
+      if (!targetCol && searchTarget) {
+        const cleanSearch = searchTarget.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        targetCol = state.columns.find((c) => {
           const cleanTitle = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           return cleanTitle.includes(cleanSearch) || cleanSearch.includes(cleanTitle);
         });
       }
 
-      const finalColumnId = targetCol?.id || alloc.columnId || fallbackColumn?.id || 'cordoba';
+      const finalColumn = targetCol || fallbackColumn;
 
-      // Remove a frota de alocações anteriores no quadro
+      // Extrai o nome limpo do cliente
+      let rawCliente = alloc.cliente || 'VITOPEL';
+      if (rawCliente.includes('/')) {
+        rawCliente = rawCliente.split('/')[0].trim();
+      }
+
+      // 3. Remove a frota de alocações anteriores no quadro
       if (!state.groups) state.groups = [];
       for (const group of state.groups) {
         group.frotaIds = group.frotaIds.filter((id) => id !== alloc.vehicleId);
       }
 
-      // Limpa blocos que ficaram vazios
+      // Remove blocos vazios
       state.groups = state.groups.filter((g) => g.frotaIds.length > 0);
 
-      // Localiza ou cria o bloco de Programação / CRT
+      // 4. Localiza ou cria o bloco de Programação / CRT
       let targetGroup = state.groups.find(
-        (g) => g.columnId === finalColumnId && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
+        (g) => g.columnId === finalColumn.id && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
       );
 
       if (!targetGroup) {
         targetGroup = {
           id: `grp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          columnId: finalColumnId,
+          columnId: finalColumn.id,
           programacao: alloc.programacao,
           crt: alloc.crt,
-          cliente: alloc.cliente || 'VITOPEL / CORDOBA',
+          cliente: rawCliente,
           frotaIds: [],
           createdAt: new Date().toISOString(),
         } as Group;
@@ -84,9 +97,9 @@ export async function POST(req: Request) {
         frotasAlocadas++;
       }
 
-      blocosCriados.add(`${finalColumnId}_${alloc.programacao}_${alloc.crt}`);
+      blocosCriados.add(`${finalColumn.id}_${alloc.programacao}_${alloc.crt}`);
 
-      // Atualiza a macro da frota
+      // 5. Atualiza a macro da frota
       const vehicle = state.vehicles.find((v) => v.id === alloc.vehicleId);
       if (vehicle) {
         vehicle.macro = macro;
@@ -94,56 +107,23 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Salva APENAS as tabelas quadro_frotas, frotas e quadro_meta (ignorando quadro_colunas)
-    const blocosRows = state.groups.map((g, i) => ({
-      id: g.id,
-      coluna_id: g.columnId,
-      rotulo: g.label ?? null,
-      programacao: g.programacao ?? null,
-      crt: g.crt ?? null,
-      cliente: g.cliente ?? null,
-      frota_ids: g.frotaIds,
-      ordem: i,
-      created_at: g.createdAt,
-    }));
-
-    if (blocosRows.length) {
-      const { error: errBlocos } = await sb.from('quadro_frotas').upsert(blocosRows);
-      if (errBlocos) throw new Error(`Erro ao salvar frotas no quadro: ${errBlocos.message}`);
-    }
-
-    const frotasRows = state.vehicles.map((v) => ({
-      id: v.id,
-      frota: v.frota,
-      placa_cavalo: v.placaCavalo ?? '',
-      placa_carreta: v.placaCarreta ?? '',
-      motorista: v.motorista ?? '',
-      macro: v.macro,
-      macro_updated_at: v.macroUpdatedAt,
-    }));
-
-    if (frotasRows.length) {
-      const { error: errFrotas } = await sb.from('frotas').upsert(frotasRows);
-      if (errFrotas) throw new Error(`Erro ao atualizar frotas: ${errFrotas.message}`);
-    }
-
-    await sb.from('quadro_meta').upsert({
-      id: 1,
-      version: Date.now(),
-      updated_at: new Date().toISOString(),
-      updated_by: 'importacao_pdf',
-    });
+    // 6. Grava tudo usando estritamente o saveBoard da Store
+    const savedState = await getStore().saveBoard(state, 'importacao_pdf');
 
     return json({
       success: true,
       frotas: frotasAlocadas,
       blocos: blocosCriados.size,
-      state,
+      state: savedState,
     });
   } catch (err) {
-    return errorResponse(
-      `Erro ao confirmar importação: ${err instanceof Error ? err.message : String(err)}`,
-      500
-    );
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (errorMsg.includes('schema cache') || errorMsg.includes('coluna_id')) {
+      return errorResponse(
+        'Erro de esquema no Supabase. Por favor, rode a migração 0002_corrigir_schema_existente.sql no SQL Editor.',
+        500
+      );
+    }
+    return errorResponse(`Erro ao confirmar importação: ${errorMsg}`, 500);
   }
 }
