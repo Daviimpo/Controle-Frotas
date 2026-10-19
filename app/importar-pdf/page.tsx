@@ -32,6 +32,7 @@ interface ReviewRow {
   destino: string;
   columnId: string;
   cliente: string;
+  clienteDestino: string;
 }
 
 const STEPS = ['Lendo o documento (PDF / TXT)', 'Programação e CONOCIMIENTO (CRT)', 'CAMION / SEMI-REMOLQUE, cliente e destino', 'Cruzando placas com a tabela de frotas'];
@@ -95,13 +96,14 @@ export default function ImportarPdfPage() {
 
   function buildReview(data: ExtractionResult) {
     setResult(data);
-    // Programações da Argentina são tratadas como Exportação por padrão
     const currentTipo: Tipo = 'exportacao';
     setTipo(currentTipo);
 
     setRows(
       data.rows.map((r, i) => {
         const matchedColId = destinoToColumnId(r.destino, state?.columns || [], currentTipo);
+        const cli = String(r.cliente ?? 'VITOPEL');
+        const dest = String(r.destino ?? 'CORDOBA');
         return {
           key: `r${i}`,
           include: !!r.vehicleId,
@@ -113,9 +115,10 @@ export default function ImportarPdfPage() {
           crtOriginal: String(r.conocimiento ?? ''),
           crt: String(r.crt ?? ''),
           programacao: String(r.programacao ?? data.programacao ?? ''),
-          destino: String(r.destino ?? ''),
+          destino: dest,
           columnId: matchedColId,
-          cliente: String(r.cliente ?? ''),
+          cliente: cli,
+          clienteDestino: `${cli} / ${dest}`,
         };
       }),
     );
@@ -314,8 +317,7 @@ export default function ImportarPdfPage() {
                     <th className="px-3 py-2.5">Frota (cadastro)</th>
                     <th className="px-3 py-2.5">Programação</th>
                     <th className="px-3 py-2.5">CRT (Conocimiento)</th>
-                    <th className="px-3 py-2.5">Destino → coluna</th>
-                    <th className="px-3 py-2.5">Cliente</th>
+                    <th className="px-3 py-2.5">Cliente / Destino</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -362,20 +364,7 @@ export default function ImportarPdfPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
-                          <Select className={cn('h-8 w-40 text-xs', !r.columnId && 'border-amber-300 bg-amber-50')} value={r.columnId} onChange={(e) => update(r.key, { columnId: e.target.value })}>
-                            <option value="">Selecione…</option>
-                            {state.columns
-                              .filter((c) => c.id !== SEM_PROGRAMACAO)
-                              .map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.title}
-                                </option>
-                              ))}
-                          </Select>
-                          {r.destino && <div className="mt-1 text-[10.5px] text-slate-400">{r.destino}</div>}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <Input className="h-8 w-44 text-xs" value={r.cliente} onChange={(e) => update(r.key, { cliente: e.target.value })} />
+                          <Input className="h-8 w-56 text-xs font-semibold" value={r.clienteDestino} onChange={(e) => update(r.key, { clienteDestino: e.target.value })} />
                         </td>
                       </tr>
                     );
@@ -395,14 +384,14 @@ export default function ImportarPdfPage() {
             <CardContent className="space-y-4">
               {blocks.length === 0 ? (
                 <p className="flex items-center gap-2 text-sm text-slate-500">
-                  <Info className="h-4 w-4" /> Selecione ao menos uma linha com frota e destino definidos.
+                  <Info className="h-4 w-4" /> Selecione ao menos uma linha com frota definida.
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-3">
                   {blocks.map((b) => (
                     <div key={`${b.columnId}${b.programacao}${b.crt}`} className="w-64 overflow-hidden rounded-lg border border-slate-200 shadow-sm">
                       <div className={cn('px-3 py-1.5 text-xs font-bold text-white', tipo === 'exportacao' ? 'bg-navy' : 'bg-emerald-700')}>
-                        {state.columns.find((c) => c.id === b.columnId)?.title} · {groupTitle({ programacao: b.programacao, crt: b.crt })}
+                        {state.columns.find((c) => c.id === b.columnId)?.title || 'Exportação'} · {groupTitle({ programacao: b.programacao, crt: b.crt })}
                       </div>
                       <div className="flex flex-wrap gap-1.5 p-2.5">
                         {b.frotas.map((id) => (
@@ -413,9 +402,9 @@ export default function ImportarPdfPage() {
                   ))}
                 </div>
               )}
-              {rows.some((r) => r.include && (!r.vehicleId || !r.columnId)) && (
+              {rows.some((r) => r.include && !r.vehicleId) && (
                 <p className="flex items-center gap-2 text-xs text-amber-700">
-                  <TriangleAlert className="h-3.5 w-3.5" /> Linhas marcadas sem frota ou sem destino serão ignoradas.
+                  <TriangleAlert className="h-3.5 w-3.5" /> Linhas marcadas sem frota serão ignoradas.
                 </p>
               )}
               <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5">
