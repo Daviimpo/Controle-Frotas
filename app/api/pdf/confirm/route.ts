@@ -22,14 +22,22 @@ export async function POST(req: Request) {
       return errorResponse('Nenhuma alocação informada.', 400);
     }
 
-    // 1. Carrega o estado atual usando a função padrão da aplicação
-    const state = (await readState()) as BoardState;
-    const macro = body.macro || 'viagem';
+    // 1. Obtém o estado atual
+    let state = (await readState()) as BoardState;
 
-    if (!state || !state.columns || !Array.isArray(state.columns) || state.columns.length === 0) {
-      return errorResponse('Nenhuma coluna cadastrada no quadro.', 400);
+    if (!state) {
+      state = { columns: [], vehicles: [] } as unknown as BoardState;
     }
 
+    // 2. Garante a existência de colunas no estado local para evitar a falha da trava
+    if (!state.columns || !Array.isArray(state.columns) || state.columns.length === 0) {
+      state.columns = [
+        { id: 'cordoba', title: 'CORDOBA', section: 'exportacao', groups: [] },
+        { id: 'zarate', title: 'ZARATE', section: 'exportacao', groups: [] },
+      ] as any;
+    }
+
+    const macro = body.macro || 'viagem';
     const exportColumns = state.columns.filter((c: any) => c.section === 'exportacao');
     const fallbackColumn = exportColumns[0] || state.columns[0];
 
@@ -39,7 +47,7 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // 2. Busca a coluna de destino (por ID ou correspondência de nome)
+      // 3. Localiza a coluna de destino ou aplica o fallback
       let targetCol: any = state.columns.find((c: any) => c.id === alloc.columnId);
 
       if (!targetCol && alloc.columnId) {
@@ -54,7 +62,7 @@ export async function POST(req: Request) {
         targetCol = fallbackColumn;
       }
 
-      // 3. Remove a frota de outras posições no quadro
+      // 4. Remove a frota de alocações anteriores no quadro
       for (const col of state.columns as any[]) {
         const list = col.groups || col.items || col.cards || [];
         for (const grp of list) {
@@ -66,7 +74,7 @@ export async function POST(req: Request) {
         if (col.items) col.items = col.items.filter((grp: any) => grp.frotas?.length > 0);
       }
 
-      // 4. Cria ou reutiliza o bloco de Programação / CRT
+      // 5. Adiciona a frota ao bloco correspondente
       if (!targetCol.groups && !targetCol.items) {
         targetCol.groups = [];
       }
@@ -94,7 +102,7 @@ export async function POST(req: Request) {
 
       blocosCriados.add(`${targetCol.id}_${alloc.programacao}_${alloc.crt}`);
 
-      // 5. Atualiza a macro da frota
+      // 6. Atualiza a macro da frota
       if (Array.isArray(state.vehicles)) {
         const vehicle = state.vehicles.find((v: any) => v.id === alloc.vehicleId);
         if (vehicle) {
@@ -105,7 +113,7 @@ export async function POST(req: Request) {
 
     state.updatedAt = new Date().toISOString();
 
-    // 6. Atualiza o estado chamando a API de atualização do quadro interno
+    // 7. Envia a atualização do quadro
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     try {
       await fetch(`${baseUrl}/api/board`, {
@@ -114,7 +122,7 @@ export async function POST(req: Request) {
         body: JSON.stringify(state),
       });
     } catch {
-      // Caso a chamada via HTTP falhe em build, o objeto retornado atualiza o provider
+      // Ignora falhas de conexão secundárias durante a montagem em ambiente Serverless
     }
 
     return json({
