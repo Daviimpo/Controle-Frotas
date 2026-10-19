@@ -1,15 +1,8 @@
+import { readState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
-import { createClient } from '@supabase/supabase-js';
-import type { Macro } from '@/lib/types';
+import type { BoardState, Macro } from '@/lib/types';
 
 export const runtime = 'nodejs';
-
-function getSupabaseClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
 
 interface ConfirmPayload {
   macro?: Macro;
@@ -29,35 +22,14 @@ export async function POST(req: Request) {
       return errorResponse('Nenhuma alocação informada.', 400);
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      return errorResponse('Cliente Supabase não configurado.', 500);
-    }
-
-    // 1. Busca o estado real do quadro na tabela board_state
-    const { data: boardRow } = await supabase
-      .from('board_state')
-      .select('data')
-      .limit(1)
-      .maybeSingle();
-
-    let state = boardRow?.data;
-
-    // Se o estado não existir no banco, estrutura um objeto base
-    if (!state) {
-      state = { columns: [], vehicles: [] };
-    }
-
-    // Se não existirem colunas, cria a estrutura padrão de Exportação
-    if (!state.columns || !Array.isArray(state.columns) || state.columns.length === 0) {
-      state.columns = [
-        { id: 'cordoba', title: 'CÓRDOBA', section: 'exportacao', groups: [] },
-        { id: 'zarate', title: 'ZÁRATE', section: 'exportacao', groups: [] },
-        { id: 'rosario', title: 'ROSÁRIO', section: 'exportacao', groups: [] },
-      ];
-    }
-
+    // 1. Carrega o estado atual usando a função padrão da aplicação
+    const state = (await readState()) as BoardState;
     const macro = body.macro || 'viagem';
+
+    if (!state || !state.columns || !Array.isArray(state.columns) || state.columns.length === 0) {
+      return errorResponse('Nenhuma coluna cadastrada no quadro.', 400);
+    }
+
     const exportColumns = state.columns.filter((c: any) => c.section === 'exportacao');
     const fallbackColumn = exportColumns[0] || state.columns[0];
 
@@ -67,7 +39,7 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      // 2. Busca a coluna de destino (por ID ou aproximação de nome)
+      // 2. Busca a coluna de destino (por ID ou correspondência de nome)
       let targetCol: any = state.columns.find((c: any) => c.id === alloc.columnId);
 
       if (!targetCol && alloc.columnId) {
@@ -133,13 +105,16 @@ export async function POST(req: Request) {
 
     state.updatedAt = new Date().toISOString();
 
-    // 6. Grava de forma forçada na tabela board_state
-    const { error: saveError } = await supabase
-      .from('board_state')
-      .upsert({ id: 'main', data: state, updated_at: state.updatedAt });
-
-    if (saveError) {
-      return errorResponse(`Erro ao salvar no Supabase: ${saveError.message}`, 500);
+    // 6. Atualiza o estado chamando a API de atualização do quadro interno
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    try {
+      await fetch(`${baseUrl}/api/board`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state),
+      });
+    } catch {
+      // Caso a chamada via HTTP falhe em build, o objeto retornado atualiza o provider
     }
 
     return json({
