@@ -55,10 +55,10 @@ export async function POST(req: Request) {
         group.frotaIds = group.frotaIds.filter((id) => id !== alloc.vehicleId);
       }
 
-      // Limpa blocos que ficaram vazios
+      // Limpa blocos vazios
       state.groups = state.groups.filter((g) => g.frotaIds.length > 0);
 
-      // 4. Localiza ou cria o bloco de Programação / CRT na coluna de destino
+      // 4. Localiza ou cria o bloco de Programação / CRT
       let targetGroup = state.groups.find(
         (g) => g.columnId === finalColumnId && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
       );
@@ -91,13 +91,13 @@ export async function POST(req: Request) {
       }
     }
 
-    // 6. Grava diretamente no Supabase mapeando o nome exato da coluna 'column_id'
+    // 6. Grava no Supabase mapeando perfeitamente para as colunas da sua tabela
     const sb = getSupabase();
 
     const blocosRows = state.groups.map((g, i) => ({
       id: g.id,
-      column_id: g.columnId, // Mapeado para column_id em inglês conforme tabela do banco
-      rotulo: g.label ?? null,
+      column_id: g.columnId,
+      label: g.label ?? null,
       programacao: g.programacao ?? null,
       crt: g.crt ?? null,
       cliente: g.cliente ?? null,
