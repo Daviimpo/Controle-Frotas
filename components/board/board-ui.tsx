@@ -18,7 +18,7 @@ export const BoardUiContext = createContext<BoardUi | null>(null);
 
 export function useBoardUi() {
   const ctx = useContext(BoardUiContext);
-  if (!ctx) throw new Error('useBoardUi fora do FleetBoard');
+  if (!ctx) throw new Error('useBoardUi fora do PlanilhaBoard');
   return ctx;
 }
 

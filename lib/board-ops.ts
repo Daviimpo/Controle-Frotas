@@ -6,6 +6,7 @@ import type { BoardState, Column, Group, Macro, Section, Vehicle, VehicleInput }
 import { SEM_PROGRAMACAO } from './mock-data';
 import { expectedMacros, macroAlert } from './macro';
 import { normalizePlate, slugify, uid } from './utils';
+import { columnLabel } from './planilha-layout';
 
 export function locate(state: BoardState, vehicleId: string): { group?: Group; column?: Column } {
   const group = state.groups.find((g) => g.frotaIds.includes(vehicleId));
@@ -24,7 +25,7 @@ export function groupTitle(g: Pick<Group, 'label' | 'programacao' | 'crt'>) {
 export function locationLabel(state: BoardState, vehicleId: string) {
   const { group, column } = locate(state, vehicleId);
   if (!group) return 'Sem Programação';
-  return `${column?.title ?? '—'} · ${groupTitle(group)}`;
+  return `${column ? columnLabel(column) : '—'} · ${groupTitle(group)}`;
 }
 
 export function unassignedVehicles(state: BoardState): Vehicle[] {

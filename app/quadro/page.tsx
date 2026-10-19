@@ -3,12 +3,11 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, Columns3, Eye, LogIn, Radio, Search, X } from 'lucide-react';
-import { FleetBoard } from '@/components/board/fleet-board';
+import { PlanilhaBoard } from '@/components/board/planilha-board';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useBoard } from '@/components/providers/board-provider';
 import { Button, Input, PageHeader, Skeleton } from '@/components/ui';
-import { MACRO_ORDER, STALE_HOURS } from '@/lib/macro';
-import { MacroLabel } from '@/components/board/frota-badge';
+import { ALERT_CELL, MACRO_ORDER, MACROS, STALE_HOURS } from '@/lib/macro';
 import { vehicleAlert } from '@/lib/board-ops';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -79,7 +78,7 @@ function Quadro() {
       )}
 
       <Legend />
-      <FleetBoard search={search} onlyAlerts={onlyAlerts} />
+      <PlanilhaBoard search={search} onlyAlerts={onlyAlerts} />
     </div>
   );
 }
@@ -87,17 +86,15 @@ function Quadro() {
 function Legend() {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs text-slate-600 shadow-sm">
-      <span className="font-semibold text-slate-500">Macro:</span>
+      <span className="font-semibold text-slate-500">Cores (macro do rastreador):</span>
       {MACRO_ORDER.map((m) => (
-        <MacroLabel key={m} macro={m} className="px-2 py-0.5 text-[11px]" />
+        <span key={m} className={cn('rounded-sm border border-slate-200 px-2 py-0.5 text-[11px] font-semibold', MACROS[m].cell)}>
+          {MACROS[m].label}
+        </span>
       ))}
       <span className="hidden h-4 w-px bg-slate-200 sm:block" />
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-3.5 w-3.5 rounded ring-2 ring-amber-400" /> Sem atualizar há +{STALE_HOURS}h
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-3.5 w-3.5 rounded ring-2 ring-red-500" /> Macro incompatível com a posição
-      </span>
+      <span className={cn('rounded-sm px-2 py-0.5 text-[11px] font-semibold', ALERT_CELL)}>Alerta</span>
+      <span className="text-slate-500">macro sem atualizar há +{STALE_HOURS}h ou incompatível com a posição</span>
     </div>
   );
 }

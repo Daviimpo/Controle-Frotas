@@ -10,6 +10,7 @@ import { FrotaBadge, MacroLabel } from '@/components/board/frota-badge';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select } from '@/components/ui';
 import { groupTitle, locate } from '@/lib/board-ops';
 import { MACRO_ORDER, MACROS } from '@/lib/macro';
+import { SEM_PROGRAMACAO } from '@/lib/mock-data';
 import { destinoToColumnId } from '@/lib/pdf/planilla';
 import type { BoardState, ExtractionResult, Macro } from '@/lib/types';
 import { cn, formatPlate } from '@/lib/utils';
@@ -31,13 +32,12 @@ interface ReviewRow {
   destino: string;
   columnId: string;
   cliente: string;
-  clienteDestino: string;
 }
 
-const STEPS = ['Lendo o documento (PDF / TXT)', 'Programação e CONOCIMIENTO (CRT)', 'CAMION / SEMI-REMOLQUE, cliente e destino', 'Cruzando placas com a tabela de frotas'];
+const STEPS = ['Lendo o documento PDF', 'Programação e CONOCIMIENTO (CRT)', 'CAMION / SEMI-REMOLQUE, cliente e destino', 'Cruzando placas com a tabela de frotas'];
 
 const SOURCE_LABEL: Record<ExtractionResult['source'], { text: string; variant: 'success' | 'brand' | 'warning' }> = {
-  texto: { text: 'Lido do texto direto (PDF/TXT)', variant: 'success' },
+  texto: { text: 'Lido do texto do PDF', variant: 'success' },
   claude: { text: 'Lido por IA (Claude)', variant: 'brand' },
   exemplo: { text: 'Exemplo', variant: 'warning' },
 };
@@ -59,16 +59,10 @@ export default function ImportarPdfPage() {
 
   async function handleFile(file: File | null) {
     if (!state) return;
-
-    if (file) {
-      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      const isTxt = file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt');
-      if (!isPdf && !isTxt) {
-        toast.error('Envie um arquivo em formato PDF ou TXT.');
-        return;
-      }
+    if (file && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Envie um arquivo PDF.');
+      return;
     }
-
     setFileName(file?.name ?? 'Exemplo — Planilla de Programación Nº 388/2026');
     setStep('processing');
     setProgress(0);
@@ -80,71 +74,56 @@ export default function ImportarPdfPage() {
       else fd.append('demo', '1');
       const [res] = await Promise.all([fetch('/api/extract-pdf', { method: 'POST', body: fd }), new Promise((r) => setTimeout(r, 2200))]);
       const data = (await res.json()) as ExtractionResult & { error?: string };
-      if (!res.ok) throw new Error(data.error || 'Falha ao processar o arquivo');
+      if (!res.ok) throw new Error(data.error || 'Falha ao processar o PDF');
       setProgress(STEPS.length);
       buildReview(data);
       setStep('review');
       if (data.warning) toast.warning(data.warning);
     } catch (err) {
-      toast.error('Não foi possível ler o arquivo', { description: err instanceof Error ? err.message : undefined, duration: 10000 });
+      toast.error('Não foi possível ler o PDF', { description: err instanceof Error ? err.message : undefined, duration: 10000 });
       setStep('idle');
     } finally {
       clearInterval(timer);
     }
   }
 
+  /** O servidor já aplicou as regras e cruzou as placas com a tabela `frotas` */
   function buildReview(data: ExtractionResult) {
     setResult(data);
-    const currentTipo: Tipo = 'exportacao';
-    setTipo(currentTipo);
-
-    // Mapeia uma coluna real da seção de exportação
-    const expColumns = state?.columns.filter((c) => c.section === currentTipo) || [];
-    const cordobaCol = expColumns.find((c) => (c.title || '').toUpperCase().includes('CORDOBA'));
-    const defaultColumnId = cordobaCol?.id || expColumns[0]?.id || state?.columns[0]?.id || 'cordoba';
-
+    setTipo(data.tipo === 'importacao' ? 'importacao' : 'exportacao');
     setRows(
-      data.rows.map((r, i) => {
-        const matchedColId = destinoToColumnId(r.destino, state?.columns || [], currentTipo) || defaultColumnId;
-        const cli = String(r.cliente ?? 'VITOPEL');
-        const dest = String(r.destino ?? 'CORDOBA');
-        return {
-          key: `r${i}`,
-          include: !!r.vehicleId,
-          placaCavalo: r.placaCavalo,
-          placaCarreta: String(r.placaCarreta ?? ''),
-          motorista: String(r.motorista ?? ''),
-          vehicleId: r.vehicleId ?? '',
-          matchedBy: r.matchedBy ?? null,
-          crtOriginal: String(r.conocimiento ?? ''),
-          crt: String(r.crt ?? ''),
-          programacao: String(r.programacao ?? data.programacao ?? ''),
-          destino: dest,
-          columnId: matchedColId,
-          cliente: cli,
-          clienteDestino: `${cli} / ${dest}`,
-        };
-      }),
+      data.rows.map((r, i) => ({
+        key: `r${i}`,
+        include: !!r.vehicleId, // só vincula frotas encontradas no cadastro
+        placaCavalo: r.placaCavalo,
+        placaCarreta: String(r.placaCarreta ?? ''),
+        motorista: String(r.motorista ?? ''),
+        vehicleId: r.vehicleId ?? '',
+        matchedBy: r.matchedBy ?? null,
+        crtOriginal: String(r.conocimiento ?? ''),
+        crt: String(r.crt ?? ''),
+        programacao: String(r.programacao ?? data.programacao ?? ''),
+        destino: String(r.destino ?? ''),
+        columnId: r.columnId ?? '',
+        cliente: String(r.cliente ?? ''),
+      })),
     );
   }
 
   function changeTipo(t: Tipo) {
     if (!state) return;
     setTipo(t);
-    const expCols = state.columns.filter((c) => c.section === t);
-    const fallback = expCols[0]?.id || state.columns[0]?.id || '';
-    setRows((rs) => rs.map((r) => ({ ...r, columnId: destinoToColumnId(r.destino, state.columns, t) || fallback })));
+    setRows((rs) => rs.map((r) => ({ ...r, columnId: destinoToColumnId(r.destino, state.columns, t) })));
   }
 
   const update = (key: string, patch: Partial<ReviewRow>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const ready = rows.filter((r) => r.include && r.vehicleId && r.columnId);
-
   const blocks = useMemo(() => {
     const map = new Map<string, { columnId: string; programacao: string; crt: string; cliente: string; frotas: string[] }>();
     for (const r of ready) {
       const k = `${r.programacao}|${r.crt}`;
-      const b = map.get(k) ?? { columnId: r.columnId, programacao: r.programacao, crt: r.crt, cliente: r.clienteDestino, frotas: [] };
+      const b = map.get(k) ?? { columnId: r.columnId, programacao: r.programacao, crt: r.crt, cliente: r.cliente, frotas: [] };
       if (!b.frotas.includes(r.vehicleId)) b.frotas.push(r.vehicleId);
       map.set(k, b);
     }
@@ -158,7 +137,7 @@ export default function ImportarPdfPage() {
         method: 'POST',
         body: {
           macro,
-          allocations: ready.map((x) => ({ vehicleId: x.vehicleId, columnId: x.columnId, programacao: x.programacao, crt: x.crt, cliente: x.clienteDestino })),
+          allocations: ready.map((x) => ({ vehicleId: x.vehicleId, columnId: x.columnId, programacao: x.programacao, crt: x.crt, cliente: x.cliente })),
         },
       });
       setSummary({ frotas: r.frotas, blocos: r.blocos });
@@ -182,7 +161,7 @@ export default function ImportarPdfPage() {
   const header = (
     <PageHeader
       icon={<FileUp className="h-5 w-5" />}
-      title="Importar Programação (PDF / TXT)"
+      title="Importar PDF de Programação"
       description="Leia a Planilla de Programación (Argentina / Uruguai) e aloque as frotas automaticamente no quadro"
     />
   );
@@ -210,6 +189,7 @@ export default function ImportarPdfPage() {
   }
 
   const vehiclesSorted = [...state.vehicles].sort((a, b) => a.frota.localeCompare(b.frota, 'pt-BR', { numeric: true }));
+  const targetColumns = state.columns.filter((c) => c.section === tipo);
 
   return (
     <div className="space-y-5">
@@ -239,18 +219,18 @@ export default function ImportarPdfPage() {
                 <Upload className="h-6 w-6 text-brand" />
               </div>
               <div>
-                <p className="text-base font-semibold text-slate-800">Arraste o arquivo PDF ou TXT da programação aqui</p>
+                <p className="text-base font-semibold text-slate-800">Arraste o PDF da programação aqui</p>
                 <p className="text-sm text-slate-500">ou clique para selecionar · Planilla de Programación (até 15 MB)</p>
               </div>
-              <input ref={inputRef} type="file" accept=".pdf,.txt,application/pdf,text/plain" className="hidden" onChange={(e) => handleFile(e.target.files?.[0] ?? null)} />
+              <input ref={inputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => handleFile(e.target.files?.[0] ?? null)} />
             </div>
             <div className="mt-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <p className="flex items-start gap-2 text-xs text-slate-500">
                 <Sparkles className="mt-px h-3.5 w-3.5 shrink-0 text-brand" />
-                Extrai Programação (Nº antes da barra), CRT (final do CONOCIMIENTO), placas CAMION/SEMI-REMOLQUE, Cliente e Destino. Arquivos TXT e PDF com texto são lidos diretamente; digitalizados, pela IA.
+                Extrai Programação (Nº antes da barra), CRT (final do CONOCIMIENTO), placas CAMION/SEMI-REMOLQUE, Cliente e Destino. PDFs com texto são lidos direto; digitalizados, pela IA. Nada é gravado antes da sua confirmação.
               </p>
               <Button variant="outline" size="sm" onClick={() => handleFile(null)}>
-                <FileText className="h-3.5 w-3.5" /> Testar com exemplo
+                <FileText className="h-3.5 w-3.5" /> Testar com PDF de exemplo
               </Button>
             </div>
           </CardContent>
@@ -324,7 +304,8 @@ export default function ImportarPdfPage() {
                     <th className="px-3 py-2.5">Frota (cadastro)</th>
                     <th className="px-3 py-2.5">Programação</th>
                     <th className="px-3 py-2.5">CRT (Conocimiento)</th>
-                    <th className="px-3 py-2.5">Cliente / Destino</th>
+                    <th className="px-3 py-2.5">Destino → coluna</th>
+                    <th className="px-3 py-2.5">Cliente</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -367,11 +348,24 @@ export default function ImportarPdfPage() {
                         <td className="px-3 py-2.5">
                           <Input className="h-8 w-24 text-xs font-semibold" value={r.crt} onChange={(e) => update(r.key, { crt: e.target.value })} />
                           <div className="mt-1 max-w-[140px] truncate font-mono text-[10.5px] text-slate-400" title={r.crtOriginal}>
-                            CRT: {r.crtOriginal || '—'}
+                            PDF: {r.crtOriginal || '—'}
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
-                          <Input className="h-8 w-56 text-xs font-semibold" value={r.clienteDestino} onChange={(e) => update(r.key, { clienteDestino: e.target.value })} />
+                          <Select className={cn('h-8 w-40 text-xs', !r.columnId && 'border-amber-300 bg-amber-50')} value={r.columnId} onChange={(e) => update(r.key, { columnId: e.target.value })}>
+                            <option value="">Selecione…</option>
+                            {targetColumns
+                              .filter((c) => c.id !== SEM_PROGRAMACAO)
+                              .map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.title}
+                                </option>
+                              ))}
+                          </Select>
+                          <div className="mt-1 text-[10.5px] text-slate-400">PDF: {r.destino || '—'}</div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Input className="h-8 w-44 text-xs" value={r.cliente} onChange={(e) => update(r.key, { cliente: e.target.value })} />
                         </td>
                       </tr>
                     );
@@ -391,14 +385,14 @@ export default function ImportarPdfPage() {
             <CardContent className="space-y-4">
               {blocks.length === 0 ? (
                 <p className="flex items-center gap-2 text-sm text-slate-500">
-                  <Info className="h-4 w-4" /> Selecione ao menos uma linha com frota definida.
+                  <Info className="h-4 w-4" /> Selecione ao menos uma linha com frota e destino definidos.
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-3">
                   {blocks.map((b) => (
                     <div key={`${b.columnId}${b.programacao}${b.crt}`} className="w-64 overflow-hidden rounded-lg border border-slate-200 shadow-sm">
                       <div className={cn('px-3 py-1.5 text-xs font-bold text-white', tipo === 'exportacao' ? 'bg-navy' : 'bg-emerald-700')}>
-                        {state.columns.find((c) => c.id === b.columnId)?.title || 'Exportação'} · {groupTitle({ programacao: b.programacao, crt: b.crt })}
+                        {state.columns.find((c) => c.id === b.columnId)?.title} · {groupTitle({ programacao: b.programacao, crt: b.crt })}
                       </div>
                       <div className="flex flex-wrap gap-1.5 p-2.5">
                         {b.frotas.map((id) => (
@@ -409,9 +403,9 @@ export default function ImportarPdfPage() {
                   ))}
                 </div>
               )}
-              {rows.some((r) => r.include && !r.vehicleId) && (
+              {rows.some((r) => r.include && (!r.vehicleId || !r.columnId)) && (
                 <p className="flex items-center gap-2 text-xs text-amber-700">
-                  <TriangleAlert className="h-3.5 w-3.5" /> Linhas marcadas sem frota serão ignoradas.
+                  <TriangleAlert className="h-3.5 w-3.5" /> Linhas marcadas sem frota ou sem destino serão ignoradas.
                 </p>
               )}
               <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5">
@@ -452,7 +446,7 @@ export default function ImportarPdfPage() {
             </p>
             <div className="flex gap-2 pt-2">
               <Button variant="secondary" onClick={reset}>
-                Importar outro arquivo
+                Importar outro PDF
               </Button>
               <Link href="/quadro" className="inline-flex h-9 items-center gap-2 rounded-md bg-navy px-4 text-sm font-medium text-white hover:bg-navy-600">
                 Ver no quadro <ArrowRight className="h-4 w-4" />

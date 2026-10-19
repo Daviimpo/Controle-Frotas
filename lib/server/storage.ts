@@ -79,7 +79,7 @@ interface ColunaRow {
 }
 interface BlocoRow {
   id: string;
-  coluna_id: string;
+  coluna_id: string | null;
   rotulo: string | null;
   programacao: string | null;
   crt: string | null;
@@ -97,8 +97,20 @@ interface MetaRow {
 }
 
 function ok<T>(res: { data: T | null; error: PostgrestError | null }, what: string): T {
-  if (res.error) throw new Error(`Supabase (${what}): ${res.error.message}`);
-  return res.data as T;
+  if (!res.error) return res.data as T;
+  const { code, message, details, hint: pgHint } = res.error;
+  const extra = [details, pgHint].filter(Boolean).join(' · ');
+  let hint = '';
+  // PGRST204 / 42703: coluna inexistente · PGRST205 / 42P01: tabela inexistente
+  if (code === 'PGRST204' || code === '42703' || code === 'PGRST205' || code === '42P01') {
+    hint = ' → O schema do banco está diferente do esperado. Rode supabase/migrations/0001 e 0002 no SQL Editor do Supabase.';
+  } else if (code === '23503') {
+    hint = ' → Referência a uma coluna do quadro que não existe em quadro_colunas.';
+  } else if (code === '22P02' || code === '42804' || code === '23502' || code === '42P10') {
+    // tipo incompatível (ex.: id uuid) · NOT NULL sem valor · falta UNIQUE em id
+    hint = ' → Tabela legada com tipos/restrições diferentes. Rode supabase/diagnostico_schema.sql e depois supabase/migrations/0002_corrigir_schema_existente.sql.';
+  }
+  throw new Error(`Supabase (${what}) [${code ?? 's/código'}]: ${message}${extra ? ` (${extra})` : ''}${hint}`);
 }
 
 const toFrotaRow = (v: Vehicle): FrotaRow => ({
@@ -150,7 +162,7 @@ const toBlocoRow = (g: Group, i: number): BlocoRow => ({
 });
 const fromBlocoRow = (r: BlocoRow): Group => ({
   id: r.id,
-  columnId: r.coluna_id,
+  columnId: r.coluna_id ?? '',
   label: r.rotulo ?? undefined,
   programacao: r.programacao ?? undefined,
   crt: r.crt ?? undefined,
@@ -208,9 +220,13 @@ const supabaseStore: Store = {
       sb.from('quadro_frotas').select('*').order('ordem'),
       sb.from('frotas').select('*'),
     ]);
+    const columns = ok(cols, 'ler colunas').map(fromColunaRow);
+    const validCols = new Set(columns.map((c) => c.id));
     return migrateMacros({
-      columns: ok(cols, 'ler colunas').map(fromColunaRow),
-      groups: ok(blocos, 'ler quadro_frotas').map(fromBlocoRow),
+      columns,
+      groups: ok(blocos, 'ler quadro_frotas')
+        .filter((b) => !!b.coluna_id && validCols.has(b.coluna_id)) // blocos legados sem coluna válida são ignorados
+        .map(fromBlocoRow),
       vehicles: sortVehicles(ok(frotas, 'ler frotas').map(fromFrotaRow)),
       version: Number(meta?.version ?? 0),
       updatedAt: meta?.updated_at ?? new Date().toISOString(),

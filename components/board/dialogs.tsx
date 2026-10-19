@@ -6,6 +6,7 @@ import type { Column, Country, Macro, Section } from '@/lib/types';
 import { MACRO_ORDER, MACROS, expectedMacros, macroAlert } from '@/lib/macro';
 import { SEM_PROGRAMACAO } from '@/lib/mock-data';
 import { addColumn, addGroup, deleteGroup, groupTitle, locate, moveFrota, updateGroup, updateVehicle } from '@/lib/board-ops';
+import { columnLabel } from '@/lib/planilha-layout';
 import { cn, COUNTRY_LABEL, crtLast5, formatDateTime, formatPlate, timeAgo } from '@/lib/utils';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useBoard } from '@/components/providers/board-provider';
@@ -45,7 +46,7 @@ export function FrotaDialog({ vehicleId, onClose }: { vehicleId: string | null; 
           <Info
             icon={<MapPin className="h-3.5 w-3.5" />}
             label="Posição no quadro"
-            value={group ? `${column?.title} · ${groupTitle(group)}` : 'Sem Programação'}
+            value={group && column ? `${columnLabel(column)} · ${groupTitle(group)}` : 'Sem Programação'}
           />
         </div>
 
@@ -92,7 +93,7 @@ export function FrotaDialog({ vehicleId, onClose }: { vehicleId: string | null; 
                   const gs = state.groups.filter((g) => g.columnId === c.id);
                   if (!gs.length) return null;
                   return (
-                    <optgroup key={c.id} label={c.title}>
+                    <optgroup key={c.id} label={columnLabel(c)}>
                       {gs.map((g) => (
                         <option key={g.id} value={g.id}>
                           {groupTitle(g)}
@@ -209,7 +210,7 @@ export function GroupDialog({
                   .filter((c) => c.section === sec && c.id !== SEM_PROGRAMACAO)
                   .map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.title}
+                      {columnLabel(c)}
                     </option>
                   ))}
               </optgroup>

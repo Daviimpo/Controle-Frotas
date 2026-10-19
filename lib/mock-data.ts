@@ -13,13 +13,16 @@ export const DEFAULT_COLUMNS: Column[] = [
   { id: 'cordoba', title: 'Córdoba', section: 'exportacao', country: 'AR', expectedMacros: EXPORT_MACROS },
   { id: 'zarate', title: 'Zárate', section: 'exportacao', country: 'AR', expectedMacros: EXPORT_MACROS },
   { id: 'santiago-cl', title: 'Santiago CL', section: 'exportacao', country: 'CL', expectedMacros: EXPORT_MACROS },
-  // Status operacionais
-  { id: 'a-caminho', title: 'A Caminho', section: 'status', subtitle: 'Carregados / Vazios', expectedMacros: ['vazio', 'destinado', 'carga', 'viagem'] },
+  // Status operacionais (bloco PORTO ALEGRE da planilha)
+  { id: 'a-caminho', title: 'Carregados', section: 'status', subtitle: 'A Caminho', expectedMacros: ['carga', 'viagem'] },
+  { id: 'a-caminho-vazios', title: 'Vazios', section: 'status', subtitle: 'A Caminho', expectedMacros: ['vazio', 'destinado'] },
   { id: 'aguardando', title: 'Aguardando Carga', section: 'status', subtitle: 'Porto Alegre', country: 'BR', expectedMacros: ['vazio', 'destinado', 'carga'] },
-  { id: 'voltando', title: 'Voltando', section: 'status', subtitle: 'Retorno ao Brasil', expectedMacros: ['vazio', 'destinado', 'viagem'] },
+  { id: 'voltando', title: 'Gua x Uru', section: 'status', subtitle: 'Voltando · Guaíba x Uruguaiana', expectedMacros: ['vazio', 'destinado', 'viagem'] },
+  { id: 'voltando-tri', title: 'Tri x Uru', section: 'status', subtitle: 'Voltando · Triunfo x Uruguaiana', expectedMacros: ['vazio', 'destinado', 'viagem'] },
   { id: SEM_PROGRAMACAO, title: 'Sem Programação', section: 'status', subtitle: 'Frotas disponíveis' },
   // Importação
-  { id: 'uruguai-imp', title: 'Uruguai', section: 'importacao', country: 'UY', expectedMacros: IMPORT_MACROS },
+  { id: 'uruguai-imp', title: 'Uruguai · Salto', section: 'importacao', country: 'UY', expectedMacros: IMPORT_MACROS },
+  { id: 'uruguai-treinta', title: 'Uruguai · Treinta y Tres', section: 'importacao', country: 'UY', expectedMacros: IMPORT_MACROS },
   { id: 'argentina-imp', title: 'Argentina', section: 'importacao', country: 'AR', expectedMacros: IMPORT_MACROS },
 ];
 
@@ -86,16 +89,16 @@ export function createMockState(): BoardState {
   g('santiago-cl', { programacao: '372', crt: '57198', cliente: 'Tramontina' }, take(2), 'viagem');
 
   // Status operacionais
-  g('a-caminho', { label: 'Carregados', expectedMacros: ['carga', 'viagem'] }, take(4), 'viagem');
-  g('a-caminho', { label: 'Vazios - Sulpapéis', expectedMacros: ['vazio', 'destinado'] }, take(2), 'vazio');
-  g('a-caminho', { label: 'Vazios - Basso', expectedMacros: ['vazio', 'destinado'] }, take(2), 'vazio');
-  g('aguardando', { label: 'Porto Alegre' }, take(5), 'vazio');
-  g('voltando', { label: 'Guaíba x Uruguaiana' }, take(4), 'vazio');
-  g('voltando', { label: 'Triunfo x Uruguaiana' }, take(3), 'vazio');
+  g('a-caminho', { label: 'Sulpapéis' }, take(2), 'viagem');
+  g('a-caminho', { label: 'Basso' }, take(2), 'carga');
+  g('a-caminho-vazios', {}, take(4), 'vazio');
+  g('aguardando', {}, take(5), 'vazio');
+  g('voltando', {}, take(4), 'destinado');
+  g('voltando-tri', {}, take(3), 'vazio');
 
   // Importação
   g('uruguai-imp', { label: 'Salto', crt: '497' }, take(2), 'carga');
-  g('uruguai-imp', { label: 'Treinta y Tres', crt: '499' }, take(1), 'viagem');
+  g('uruguai-treinta', { label: 'Treinta y Tres', crt: '499' }, take(1), 'destinado');
   g('uruguai-imp', { crt: '498' }, take(2), 'viagem');
   g('uruguai-imp', { crt: '500' }, take(1), 'carga');
   g('argentina-imp', { crt: '3058' }, take(2), 'viagem');

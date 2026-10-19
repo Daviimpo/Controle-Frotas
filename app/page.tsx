@@ -9,6 +9,7 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Input
 import { columnCount, locationLabel, sectionCount, unassignedVehicles, vehicleAlert } from '@/lib/board-ops';
 import { MACROS } from '@/lib/macro';
 import { SEM_PROGRAMACAO } from '@/lib/mock-data';
+import { columnLabel, orderColumns } from '@/lib/planilha-layout';
 import type { BoardState } from '@/lib/types';
 import { cn, formatPlate, normalizePlate, normalizeText, timeAgo } from '@/lib/utils';
 
@@ -43,7 +44,7 @@ function Dashboard({ state }: { state: BoardState }) {
     .map((g) => ({ g, col: state.columns.find((c) => c.id === g.columnId)! }))
     .filter((x) => x.col && x.col.section !== 'status');
 
-  const distribution = state.columns
+  const distribution = orderColumns(state.columns)
     .filter((c) => c.id !== SEM_PROGRAMACAO)
     .map((c) => ({ c, n: count(c.id) }));
   const max = Math.max(1, ...distribution.map((d) => d.n));
@@ -88,7 +89,7 @@ function Dashboard({ state }: { state: BoardState }) {
             <CardContent className="space-y-2">
               {distribution.map(({ c, n }) => (
                 <div key={c.id} className="flex items-center gap-3 text-sm">
-                  <span className="w-36 shrink-0 truncate text-slate-600">{c.title}</span>
+                  <span className="w-44 shrink-0 truncate text-slate-600" title={columnLabel(c)}>{columnLabel(c).replace('Porto Alegre › ', '')}</span>
                   <div className="h-5 flex-1 rounded bg-slate-100">
                     <div
                       className={cn('h-5 rounded', c.section === 'exportacao' ? 'bg-navy' : c.section === 'importacao' ? 'bg-emerald-600' : 'bg-slate-400')}
@@ -128,7 +129,7 @@ function Dashboard({ state }: { state: BoardState }) {
                   {programacoes.map(({ g, col }) => (
                     <tr key={g.id} className="hover:bg-slate-50/60">
                       <td className="px-5 py-2.5">
-                        <div className="font-medium text-slate-800">{col.title}</div>
+                        <div className="font-medium text-slate-800">{columnLabel(col)}</div>
                         <div className="text-[11px] text-slate-400">{col.section === 'exportacao' ? 'Exportação' : 'Importação'}</div>
                       </td>
                       <td className="px-3 py-2.5 font-semibold tabular-nums">{g.programacao ?? '—'}</td>

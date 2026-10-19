@@ -6,45 +6,55 @@ export const STALE_HOURS = 12;
 
 export const MACRO_ORDER: Macro[] = ['vazio', 'destinado', 'carga', 'viagem', 'descarga', 'manutencao'];
 
+/** Célula da planilha quando a frota está em alerta (rosa/vermelho, como no Excel) */
+export const ALERT_CELL = 'bg-[#FFC7CE] text-[#C00000]';
+
 /**
  * Cores oficiais das macros (mesmas da planilha operacional).
  * - chip: badge da frota no quadro (bg + texto + borda)
  * - badge: rótulos com ring (diálogos, tabelas)
  * - dot: marcador pequeno (legendas)
+ * - cell: célula do Quadro no estilo da planilha PROGRAMAÇÃO FROTAS (tons do Excel)
  * As classes ficam escritas por extenso para o Tailwind gerá-las.
  */
-export const MACROS: Record<Macro, { label: string; chip: string; badge: string; dot: string }> = {
+export const MACROS: Record<Macro, { label: string; chip: string; badge: string; dot: string; cell: string }> = {
   vazio: {
+    cell: 'bg-[#FFE699] text-[#1F4E79]',
     label: 'Vazio',
     chip: 'bg-[#FFF2CC] text-[#B45F06] border-[#FFE599]',
     badge: 'bg-[#FFF2CC] text-[#B45F06] ring-[#FFE599]',
     dot: 'bg-[#B45F06]',
   },
   destinado: {
+    cell: 'bg-[#C6E0B4] text-[#1F4E79]',
     label: 'Destinado',
     chip: 'bg-[#D9EAD3] text-[#274E13] border-[#B6D7A8]',
     badge: 'bg-[#D9EAD3] text-[#274E13] ring-[#B6D7A8]',
     dot: 'bg-[#274E13]',
   },
   carga: {
+    cell: 'bg-[#B4C6E7] text-[#1F4E79]',
     label: 'Carga',
     chip: 'bg-[#C9DAF8] text-[#1C4587] border-[#A4C2F4]',
     badge: 'bg-[#C9DAF8] text-[#1C4587] ring-[#A4C2F4]',
     dot: 'bg-[#1C4587]',
   },
   viagem: {
+    cell: 'bg-[#BDD7EE] text-[#1F4E79]',
     label: 'Viagem',
     chip: 'bg-[#CFE2F3] text-[#0B5394] border-[#9FC5E8]',
     badge: 'bg-[#CFE2F3] text-[#0B5394] ring-[#9FC5E8]',
     dot: 'bg-[#0B5394]',
   },
   descarga: {
+    cell: 'bg-[#F8CBAD] text-[#1F4E79]',
     label: 'Descarga',
     chip: 'bg-[#FCE5CD] text-[#783F04] border-[#F9CB9C]',
     badge: 'bg-[#FCE5CD] text-[#783F04] ring-[#F9CB9C]',
     dot: 'bg-[#783F04]',
   },
   manutencao: {
+    cell: 'bg-white text-[#595959]',
     label: 'Manutenção',
     chip: 'bg-[#EFEFEF] text-[#434343] border-[#D9D9D9]',
     badge: 'bg-[#EFEFEF] text-[#434343] ring-[#D9D9D9]',
