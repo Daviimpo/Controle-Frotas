@@ -10,7 +10,6 @@ import { FrotaBadge, MacroLabel } from '@/components/board/frota-badge';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select } from '@/components/ui';
 import { groupTitle, locate } from '@/lib/board-ops';
 import { MACRO_ORDER, MACROS } from '@/lib/macro';
-import { SEM_PROGRAMACAO } from '@/lib/mock-data';
 import { destinoToColumnId } from '@/lib/pdf/planilla';
 import type { BoardState, ExtractionResult, Macro } from '@/lib/types';
 import { cn, formatPlate } from '@/lib/utils';
@@ -99,13 +98,14 @@ export default function ImportarPdfPage() {
     const currentTipo: Tipo = 'exportacao';
     setTipo(currentTipo);
 
-    // Seleciona uma coluna real do quadro (prioriza Exportação)
-    const validColumns = state?.columns.filter((c) => c.section === currentTipo && c.id !== SEM_PROGRAMACAO) || [];
-    const fallbackColId = validColumns[0]?.id || state?.columns[0]?.id || '';
+    // Mapeia uma coluna real da seção de exportação
+    const expColumns = state?.columns.filter((c) => c.section === currentTipo) || [];
+    const cordobaCol = expColumns.find((c) => (c.title || '').toUpperCase().includes('CORDOBA'));
+    const defaultColumnId = cordobaCol?.id || expColumns[0]?.id || state?.columns[0]?.id || 'cordoba';
 
     setRows(
       data.rows.map((r, i) => {
-        const matchedColId = destinoToColumnId(r.destino, state?.columns || [], currentTipo) || fallbackColId;
+        const matchedColId = destinoToColumnId(r.destino, state?.columns || [], currentTipo) || defaultColumnId;
         const cli = String(r.cliente ?? 'VITOPEL');
         const dest = String(r.destino ?? 'CORDOBA');
         return {
@@ -131,8 +131,8 @@ export default function ImportarPdfPage() {
   function changeTipo(t: Tipo) {
     if (!state) return;
     setTipo(t);
-    const validCols = state.columns.filter((c) => c.section === t && c.id !== SEM_PROGRAMACAO);
-    const fallback = validCols[0]?.id || state.columns[0]?.id || '';
+    const expCols = state.columns.filter((c) => c.section === t);
+    const fallback = expCols[0]?.id || state.columns[0]?.id || '';
     setRows((rs) => rs.map((r) => ({ ...r, columnId: destinoToColumnId(r.destino, state.columns, t) || fallback })));
   }
 
