@@ -1,7 +1,5 @@
-import { readState } from '@/lib/server/storage';
+import { getStore, readState } from '@/lib/server/storage';
 import { errorResponse, json } from '@/lib/server/http';
-import { getSupabase } from '@/lib/server/supabase';
-import { DEFAULT_COLUMNS } from '@/lib/mock-data';
 import type { Group, Macro } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -24,36 +22,17 @@ export async function POST(req: Request) {
       return errorResponse('Nenhuma alocação informada.', 400);
     }
 
-    const sb = getSupabase();
-
-    // 1. Busca as colunas na tabela do Supabase
-    let { data: dbColumns } = await sb.from('quadro_colunas').select('*').order('ordem');
-
-    // Se estiver vazia, insere as colunas padrão enviando apenas o esquema base (sem campos incompatíveis)
-    if (!dbColumns || dbColumns.length === 0) {
-      const defaultRows = DEFAULT_COLUMNS.map((c, i) => ({
-        id: c.id,
-        titulo: c.title,
-        secao: c.section,
-        subtitulo: c.subtitle ?? null,
-        ordem: i,
-      }));
-
-      const { error: insertColErr } = await sb.from('quadro_colunas').upsert(defaultRows, { onConflict: 'id' });
-      if (insertColErr) {
-        return errorResponse(`Erro ao inicializar quadro_colunas: ${insertColErr.message}`, 500);
-      }
-
-      const { data: reloadedCols } = await sb.from('quadro_colunas').select('*').order('ordem');
-      dbColumns = reloadedCols || defaultRows;
-    }
-
-    // 2. Lê o estado
+    // 1. Lê o estado completo do quadro
     const state = await readState();
     const macro = body.macro || 'viagem';
 
-    const exportColumns = dbColumns.filter((c: any) => c.secao === 'exportacao');
-    const fallbackColumn = exportColumns[0] || dbColumns[0];
+    // Garante que existem colunas no estado
+    if (!state.columns || state.columns.length === 0) {
+      return errorResponse('Nenhuma coluna disponível no quadro de frotas.', 400);
+    }
+
+    const exportColumns = state.columns.filter((c) => c.section === 'exportacao');
+    const fallbackColumn = exportColumns[0] || state.columns[0];
 
     let frotasAlocadas = 0;
     const blocosCriados = new Set<string>();
@@ -61,33 +40,37 @@ export async function POST(req: Request) {
     for (const alloc of body.allocations) {
       if (!alloc.vehicleId) continue;
 
-      let targetDbCol = dbColumns.find((c: any) => c.id === alloc.columnId);
+      // 2. Busca a coluna de destino no estado por ID ou título
+      let targetCol = state.columns.find((c) => c.id === alloc.columnId);
 
-      if (!targetDbCol && alloc.columnId) {
+      if (!targetCol && alloc.columnId) {
         const cleanSearch = alloc.columnId.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        targetDbCol = dbColumns.find((c: any) => {
-          const cleanTitle = (c.titulo || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        targetCol = state.columns.find((c) => {
+          const cleanTitle = (c.title || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           return cleanTitle.includes(cleanSearch) || cleanSearch.includes(cleanTitle);
         });
       }
 
-      const realColumnId = targetDbCol?.id || fallbackColumn.id;
+      const finalColumnId = targetCol?.id || fallbackColumn.id;
 
+      // 3. Remove a frota de qualquer outro bloco no quadro antes de reatribuir
       if (!state.groups) state.groups = [];
       for (const group of state.groups) {
         group.frotaIds = group.frotaIds.filter((id) => id !== alloc.vehicleId);
       }
 
+      // Limpa blocos que ficaram sem frotas
       state.groups = state.groups.filter((g) => g.frotaIds.length > 0);
 
+      // 4. Localiza ou cria o bloco de Programação / CRT na coluna de destino
       let targetGroup = state.groups.find(
-        (g) => g.columnId === realColumnId && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
+        (g) => g.columnId === finalColumnId && String(g.programacao) === String(alloc.programacao) && String(g.crt) === String(alloc.crt)
       );
 
       if (!targetGroup) {
         targetGroup = {
           id: `grp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          columnId: realColumnId,
+          columnId: finalColumnId,
           programacao: alloc.programacao,
           crt: alloc.crt,
           cliente: alloc.cliente || 'VITOPEL / CORDOBA',
@@ -102,8 +85,9 @@ export async function POST(req: Request) {
         frotasAlocadas++;
       }
 
-      blocosCriados.add(`${realColumnId}_${alloc.programacao}_${alloc.crt}`);
+      blocosCriados.add(`${finalColumnId}_${alloc.programacao}_${alloc.crt}`);
 
+      // 5. Atualiza a macro da frota
       const vehicle = state.vehicles.find((v) => v.id === alloc.vehicleId);
       if (vehicle) {
         vehicle.macro = macro;
@@ -111,47 +95,14 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Grava frotas na tabela
-    const blocosRows = state.groups.map((g, i) => ({
-      id: g.id,
-      column_id: g.columnId,
-      label: g.label ?? null,
-      programacao: g.programacao ?? null,
-      crt: g.crt ?? null,
-      cliente: g.cliente ?? null,
-      frota_ids: g.frotaIds,
-      ordem: i,
-      created_at: g.createdAt,
-    }));
-
-    if (blocosRows.length) {
-      const { error: errBlocos } = await sb.from('quadro_frotas').upsert(blocosRows);
-      if (errBlocos) throw new Error(`Erro ao salvar frotas no quadro: ${errBlocos.message}`);
-    }
-
-    const frotasRows = state.vehicles.map((v) => ({
-      id: v.id,
-      frota: v.frota,
-      placa_cavalo: v.placaCavalo ?? '',
-      placa_carreta: v.placaCarreta ?? '',
-      motorista: v.motorista ?? '',
-      macro: v.macro,
-      macro_updated_at: v.macroUpdatedAt,
-      updated_at: new Date().toISOString(),
-    }));
-
-    if (frotasRows.length) {
-      const { error: errFrotas } = await sb.from('frotas').upsert(frotasRows);
-      if (errFrotas) throw new Error(`Erro ao atualizar frotas: ${errFrotas.message}`);
-    }
-
-    await sb.from('quadro_meta').upsert({ id: 1, version: Date.now(), updated_at: new Date().toISOString(), updated_by: 'importacao_pdf' });
+    // 6. Salva utilizando a função oficial do sistema (saveBoard)
+    const savedState = await getStore().saveBoard(state, 'importacao_pdf');
 
     return json({
       success: true,
       frotas: frotasAlocadas,
       blocos: blocosCriados.size,
-      state,
+      state: savedState,
     });
   } catch (err) {
     return errorResponse(
