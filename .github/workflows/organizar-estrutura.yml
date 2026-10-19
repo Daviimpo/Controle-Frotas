@@ -1,0 +1,98 @@
+# Organiza o repositório Controle-Frotas: move os arquivos que ficaram soltos na raiz
+# para as pastas corretas (app/, components/, lib/, scripts/, supabase/) e remove duplicados.
+# Roda sozinho quando este arquivo é criado. Pode ser apagado depois.
+name: Organizar estrutura de pastas
+
+on:
+  push:
+    paths:
+      - ".github/workflows/organizar-estrutura.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  organizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Mover arquivos para as pastas certas
+        run: |
+          set -euo pipefail
+          if [ ! -f planilha-layout.ts ] && [ -f lib/planilha-layout.ts ]; then
+            echo "Estrutura já organizada — nada a fazer."; exit 0
+          fi
+          mover() { if [ -e "$1" ]; then mkdir -p "$(dirname "$2")"; git mv -f "$1" "$2"; echo "  $1  ->  $2"; fi; }
+          apagar() { if [ -e "$1" ]; then git rm -q -f "$1"; echo "  removido: $1"; fi; }
+
+          echo "Movendo arquivos soltos para as pastas certas:"
+          mover "page (8).tsx"                        "app/page.tsx"
+          mover "page (9).tsx"                        "app/importar-pdf/page.tsx"
+          mover "page (10).tsx"                       "app/quadro/page.tsx"
+          mover "page.tsx"                            "app/cadastro/page.tsx"
+          mover "layout.tsx"                          "app/layout.tsx"
+          mover "globals.css"                         "app/globals.css"
+          mover "route.ts"                            "app/api/auth/logout/route.ts"
+          mover "route (1).ts"                        "app/api/auth/me/route.ts"
+          mover "route (2).ts"                        "app/api/auth/login/route.ts"
+          mover "route (3).ts"                        "app/api/extract-pdf/route.ts"
+          mover "route (4).ts"                        "app/api/frotas/route.ts"
+          mover "route (5).ts"                        "app/api/frotas/import/route.ts"
+          mover "route (6).ts"                        "app/api/state/route.ts"
+          mover "route (7).ts"                        "app/api/pdf/confirm/route.ts"
+          mover "board-ui.tsx"                        "components/board/board-ui.tsx"
+          mover "dialogs.tsx"                         "components/board/dialogs.tsx"
+          mover "frota-badge.tsx"                     "components/board/frota-badge.tsx"
+          mover "planilha-board.tsx"                  "components/board/planilha-board.tsx"
+          mover "navbar.tsx"                          "components/layout/navbar.tsx"
+          mover "app-providers.tsx"                   "components/providers/app-providers.tsx"
+          mover "auth-provider.tsx"                   "components/providers/auth-provider.tsx"
+          mover "board-provider.tsx"                  "components/providers/board-provider.tsx"
+          mover "index.tsx"                           "components/ui/index.tsx"
+          mover "board-ops.ts"                        "lib/board-ops.ts"
+          mover "macro.ts"                            "lib/macro.ts"
+          mover "mock-data.ts"                        "lib/mock-data.ts"
+          mover "planilha-layout.ts"                  "lib/planilha-layout.ts"
+          mover "types.ts"                            "lib/types.ts"
+          mover "utils.ts"                            "lib/utils.ts"
+          mover "planilla.ts"                         "lib/pdf/planilla.ts"
+          mover "http.ts"                             "lib/server/http.ts"
+          mover "pdf-extract.ts"                      "lib/server/pdf-extract.ts"
+          mover "session.ts"                          "lib/server/session.ts"
+          mover "storage.ts"                          "lib/server/storage.ts"
+          mover "supabase.ts"                         "lib/server/supabase.ts"
+          mover "sincronizar-repo.mjs"                "scripts/sincronizar-repo.mjs"
+          mover "verificar-estrutura.mjs"             "scripts/verificar-estrutura.mjs"
+          mover "0001_controle_frotas.sql"            "supabase/migrations/0001_controle_frotas.sql"
+          mover "0002_corrigir_schema_existente.sql"  "supabase/migrations/0002_corrigir_schema_existente.sql"
+          mover "0003_layout_planilha.sql"            "supabase/migrations/0003_layout_planilha.sql"
+          mover "diagnostico_schema.sql"              "supabase/diagnostico_schema.sql"
+          mover "planilla_388_texto.pdf"              "exemplos/planilla_388_texto.pdf"
+          mover "download"                            ".gitignore"
+          mover "env.example"                         ".env.example"
+          mover "logo polivias oficial.png"           "public/logo polivias oficial.png"
+
+          echo "Removendo duplicados e componentes da versão antiga:"
+          apagar "logo.png"   # cópia idêntica de public/logo.png
+          apagar "components/board/board-column.tsx"
+          apagar "components/board/fleet-board.tsx"
+          apagar "components/board/frota-chip.tsx"
+          apagar "components/board/group-block.tsx"
+          mkdir -p data && [ -f data/.gitkeep ] || { touch data/.gitkeep; git add data/.gitkeep; }
+
+          echo "Verificando a estrutura:"
+          node scripts/verificar-estrutura.mjs
+
+      - name: Salvar (commit + push)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --cached --quiet; then echo "Nada para salvar."; exit 0; fi
+          git commit -m "Organiza arquivos nas pastas corretas (app/, components/, lib/, scripts/, supabase/)"
+          git push
